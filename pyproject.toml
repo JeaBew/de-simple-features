@@ -12,7 +12,10 @@ dependencies = [
     "pandas (>=2.2.0,<3.0.0)",
     "lift-linguistic-features-py (>=0.1.0,<0.2.0)",
     "prompt-toolkit (>=3.0.52,<4.0.0)",
-    "matplotlib (>=3.11.0,<4.0.0)"
+    "matplotlib (>=3.11.0,<4.0.0)",
+    "seaborn (>=0.13.0,<0.14.0)",
+    "jupyter (>=1.0.0,<2.0.0)",
+    "ipykernel (>=6.29.0,<7.0.0)"
 ]
 
 
