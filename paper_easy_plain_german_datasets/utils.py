@@ -13,7 +13,7 @@ from pathlib import Path
 from tqdm import tqdm
 from py_lift.preprocessing import Spacy_Preprocessor
 from py_lift.utils.core import load_lift_typesystem
-from py_lift.readability import FE_TextstatFleschIndex
+from py_lift.readability import FE_TextstatWienerSachtextformel_1
 from py_lift.utils.core import load_cas_from_xmi_with_lift_ts
 
 # Initialise the preprocessing pipeline once – it is safe to reuse across calls.
@@ -34,9 +34,13 @@ def _extract_scores_from_cas(cas) -> list[float]:
 
     Returns a list with a single float score if the feature is present, otherwise an empty list.
     """
-    FE_TextstatFleschIndex("de").extract(cas)
+    FE_TextstatWienerSachtextformel_1().extract(cas)
     for feature in cas.select("org.lift.type.FeatureAnnotationNumeric"):
-        if feature.get('name') == 'Readability_Score_FleschReadingEase_de':
+        if (feature.value < 0):
+            print(f"Warning: Negative readability score {feature.value} found.")
+            print(cas.sofa_string)
+        
+        if feature.get('name') == 'Readability_Score_WienerSachtextformel-1_de':
             try:
                 return [float(feature.value)]
             except Exception as e:
