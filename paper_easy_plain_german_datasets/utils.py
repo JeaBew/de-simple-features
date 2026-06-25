@@ -15,6 +15,7 @@ from py_lift.preprocessing import Spacy_Preprocessor
 from py_lift.utils.core import load_lift_typesystem
 from py_lift.readability import FE_TextstatWienerSachtextformel_1
 from py_lift.utils.core import load_cas_from_xmi_with_lift_ts
+import re
 
 # Initialise the preprocessing pipeline once – it is safe to reuse across calls.
 prep = Spacy_Preprocessor("de", auto_install_models=True)
@@ -97,3 +98,15 @@ def process_folder(dir: Path, use_cache: bool = True) -> list[float]:
             cas = prep.run(text)
             scores.extend(_extract_scores_from_cas(cas))
     return scores
+
+
+def keep_trailing_number_filename(filename: str | Path) -> str:
+    """
+    Extrahiert die Ziffern am Ende des Dateinamens (vor der Endung) und gibt
+    '<zahl><suffix>' zurück, z.B. 'deplain_simple_1234.xmi' -> '1234.xmi'.
+    """
+    p = Path(filename)
+    m = re.search(r"(\d+)$", p.stem)
+    if not m:
+        raise ValueError(f"Keine Zahl am Ende des Dateinamens gefunden: {p.name}")
+    return f"{m.group(1)}{p.suffix}"
