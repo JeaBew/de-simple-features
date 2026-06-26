@@ -3,7 +3,7 @@ from cassis import cas_to_comparable_text
 from py_lift.preprocessing import Spacy_Preprocessor
 from py_lift.utils.core import load_lift_typesystem
 # Reuse the readability extraction helper to avoid duplicated FE_TextstatFleschIndex calls.
-from paper_easy_plain_german_datasets.utils import apply_readability
+from paper_easy_plain_german_datasets.utils import 
 from pathlib import Path
 
 prep = Spacy_Preprocessor("de", auto_install_models=True)

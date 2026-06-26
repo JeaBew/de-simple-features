@@ -9,6 +9,7 @@ duplication.
 """
 
 import os
+import re
 from pathlib import Path
 from tqdm import tqdm
 from typing import Callable, Any, List, Dict
@@ -184,3 +185,14 @@ def process_folder(
         for name, vals in file_result.items():
             aggregated[name].extend(vals)
     return aggregated
+
+def keep_trailing_number_filename(filename: str | Path) -> str:
+    """
+    Extrahiert die Ziffern am Ende des Dateinamens (vor der Endung) und gibt
+    '<zahl><suffix>' zurück, z.B. 'deplain_simple_1234.xmi' -> '1234.xmi'.
+    """
+    p = Path(filename)
+    m = re.search(r"(\d+)$", p.stem)
+    if not m:
+        raise ValueError(f"Keine Zahl am Ende des Dateinamens gefunden: {p.name}")
+    return f"{m.group(1)}{p.suffix}"
