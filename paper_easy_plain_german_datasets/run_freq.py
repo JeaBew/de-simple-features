@@ -74,8 +74,8 @@ from constants import (
     GFA_PLAIN,
     DEPLAIN_ORIG,
     DEPLAIN_PLAIN,
+    Leiko_PLAIN,
 )
-from py_lift.readability import FE_TextstatWienerSachtextformel_1  # type: ignore
 from py_lift.annotators.frequency import SE_TokenZipfFrequency
 from py_lift.extractors_specific import FE_FreqBandRatios
 
@@ -105,6 +105,8 @@ def main() -> None:
     scores_deplain_orig = process_folder(DEPLAIN_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEPLAIN_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    
     # ---------------------------------------------------------------------
     # Compute the average score for each feature across all documents.
     # ---------------------------------------------------------------------
@@ -120,6 +122,7 @@ def main() -> None:
         "DEPLAIN_PLAIN": compute_avg(scores_deplain_plain),
         "G4A_PLAIN": compute_avg(scores_g4a_plain),
         "CRAWLED_EASY": compute_avg(scores_crawled_easy),
+        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
     }
 
     # Plot stacked bars for all corpora.

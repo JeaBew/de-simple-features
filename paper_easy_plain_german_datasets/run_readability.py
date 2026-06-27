@@ -7,7 +7,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from utils import process_folder
-from constants import CRAWLED_ORIG, CRAWLED_PLAIN, CRAWLED_EASY, GFA_ORIG, GFA_PLAIN, DEPLAIN_ORIG, DEPLAIN_PLAIN
+from constants import CRAWLED_ORIG, CRAWLED_PLAIN, CRAWLED_EASY, GFA_ORIG, GFA_PLAIN, DEPLAIN_ORIG, DEPLAIN_PLAIN, Leiko_PLAIN
 from py_lift.readability import FE_TextstatWienerSachtextformel_1  # type: ignore
 
 def _plot_scores(corpus_scores: dict, title: str, output_path: Path) -> None:
@@ -33,6 +33,9 @@ def _plot_scores(corpus_scores: dict, title: str, output_path: Path) -> None:
     sns.swarmplot(x="corpus", y="score", data=df, color="k", alpha=0.5, size=3)
     plt.title(title)
     plt.ylabel("Readability Score")
+    # Rotate corpus labels for readability (45°)
+    ax = plt.gca()
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=300)
@@ -56,7 +59,11 @@ def _plot_box(corpus_scores: dict, title: str, output_path: Path) -> None:
     plt.figure(figsize=(8, 6))
     sns.boxplot(x="corpus", y="score", data=df, palette="muted", hue="corpus")
     plt.title(title)
+    
     plt.ylabel("Readability Score")
+    # Rotate corpus labels for readability (45°)
+    ax = plt.gca()
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=300)
@@ -127,6 +134,26 @@ def main() -> None:
         {"orig": scores_deplain_orig.get(feat, []), "plain": scores_deplain_plain.get(feat, [])},
         "Deplain Readability Distribution",
         Path("output") / "deplain_readability.png",
+    )
+
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    # ---------------------------------------------------------------------
+    # Combined plot for all corpora
+    # ---------------------------------------------------------------------
+    combined_scores = {
+        "CRAWLED_ORIG": scores_crawled_orig.get(feat, []),
+        "CRAWLED_PLAIN": scores_crawled_plain.get(feat, []),
+        "CRAWLED_EASY": scores_crawled_easy.get(feat, []),
+        "G4A_ORIG": scores_g4a_orig.get(feat, []),
+        "G4A_PLAIN": scores_g4a_plain.get(feat, []),
+        "DEPLAIN_ORIG": scores_deplain_orig.get(feat, []),
+        "DEPLAIN_PLAIN": scores_deplain_plain.get(feat, []),
+        "Leiko_PLAIN": scores_leiko_plain.get(feat, []),
+    }
+    _plot_scores(
+        combined_scores,
+        "Readability Distribution Across All Corpora",
+        Path("output") / "all_readability.png",
     )
     # Additional box plot for Deplain dataset
     _plot_box(
