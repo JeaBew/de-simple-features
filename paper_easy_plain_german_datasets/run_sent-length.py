@@ -49,6 +49,7 @@ from constants import (
     GFA_PLAIN,
     DEPLAIN_ORIG,
     DEPLAIN_PLAIN,
+    Leiko_PLAIN,
 )
 from py_lift.extractors import FE_TokensPerSentence
 
@@ -69,7 +70,9 @@ def main() -> None:
 
     scores_deplain_orig = process_folder(DEPLAIN_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEPLAIN_PLAIN, feature_extractor=extractor, feature_names=feature_names)
-
+    
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    
     # ---------------------------------------------------------------------
     # Compute the average score for each feature across all documents.
     # ---------------------------------------------------------------------
@@ -85,6 +88,7 @@ def main() -> None:
         "DEPLAIN_PLAIN": compute_avg(scores_deplain_plain),
         "G4A_PLAIN": compute_avg(scores_g4a_plain),
         "CRAWLED_EASY": compute_avg(scores_crawled_easy),
+        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
     }
 
     # Plot violin + swarm for sentence length distribution across corpora.
@@ -97,6 +101,7 @@ def main() -> None:
             "DEPLAIN_PLAIN": scores_deplain_plain.get(feature_names[0], []),
             "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
             "G4A_PLAIN": scores_g4a_plain.get(feature_names[0], []),
+            "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
         },
         "Sentence Length Distribution (Tokens per Sentence)",
         Path("output") / "sentence_length.png",
@@ -140,6 +145,7 @@ def main() -> None:
         "G4A_PLAIN": GFA_PLAIN,
         "DEPLAIN_ORIG": DEPLAIN_ORIG,
         "DEPLAIN_PLAIN": DEPLAIN_PLAIN,
+        "Leiko_PLAIN": Leiko_PLAIN,
     }.items():
         all_entries.extend(_collect_lengths(path, label))
 
