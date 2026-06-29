@@ -7,66 +7,114 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from utils import process_folder
-from constants import CRAWLED_ORIG, CRAWLED_PLAIN, CRAWLED_EASY, GFA_ORIG, GFA_PLAIN, DEPLAIN_ORIG, DEPLAIN_PLAIN, Leiko_PLAIN
+from constants import (
+    TIGER_ORIG,
+    ASGC_ORIG,
+    ASGC_PLAIN,
+    ASGC_EASY,
+    G4A_ORIG,
+    G4A_PLAIN,
+    DEplain_ORIG,
+    DEplain_PLAIN,
+    Leiko_PLAIN
+)
 from py_lift.readability import FE_TextstatWienerSachtextformel_1  # type: ignore
 
 def _plot_scores(corpus_scores: dict, title: str, output_path: Path) -> None:
     """Create a violin + swarm plot for the given corpus scores.
 
+    The colour scheme groups corpora by *category* (orig, plain, easy) rather than
+    by the exact corpus name. All corpora that belong to the same category share
+    the same colour, while the three categories receive distinct colours.
+
     Args:
-        corpus_scores: Mapping from corpus name (e.g., "orig", "plain", "easy")
-            to a list of readability scores.
+        corpus_scores: Mapping from corpus name (e.g., "CRAWLED_ORIG") to a list
+            of readability scores.
         title: Title for the plot.
         output_path: File path where the PNG image will be saved.
     """
-    # Prepare DataFrame
+    # Helper to map a corpus identifier to its high‑level category.
+    def _category(name: str) -> str:
+        upper = name.upper()
+        if "ORIG" in upper:
+            return "orig"
+        if "EASY" in upper:
+            return "easy"
+        return "plain"
+
+    # Prepare DataFrame with an additional ``category`` column.
     df = pd.DataFrame({
         "corpus": sum([[name] * len(scores) for name, scores in corpus_scores.items()], []),
         "score": sum([list(scores) for scores in corpus_scores.values()], []),
     })
+    df["category"] = df["corpus"].apply(_category)
 
     sns.set(style="whitegrid")
     plt.figure(figsize=(8, 6))
-    # Violin plot with hue to avoid deprecation warning
-    sns.violinplot(x="corpus", y="score", hue="corpus", data=df, inner="quartile", palette="muted", legend=False)
-    # Swarm overlay
+    # Use ``category`` as hue so that all corpora of the same category share a colour.
+    palette = {"orig": "tab:blue", "plain": "tab:orange", "easy": "tab:green"}
+    sns.violinplot(
+        x="corpus",
+        y="score",
+        hue="category",
+        data=df,
+        inner="quartile",
+        palette=palette,
+        legend=False,
+    )
+    # Swarm overlay – keep points black for contrast.
     sns.swarmplot(x="corpus", y="score", data=df, color="k", alpha=0.5, size=3)
     plt.title(title)
     plt.ylabel("Readability Score")
-    # Rotate corpus labels for readability (45°)
     ax = plt.gca()
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="center")
+    # Adjust bottom margin so rotated labels are not cut off (similar to run_freq.py).
+    fig = plt.gcf()
+    fig.subplots_adjust(bottom=0.35)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=300)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
 def _plot_box(corpus_scores: dict, title: str, output_path: Path) -> None:
-    """Create a box plot (separate from the violin plot) for the given scores.
+    """Create a box plot for the given scores using the same colour scheme as
+    :func:`_plot_scores`.
 
     Args:
         corpus_scores: Mapping from corpus name to list of scores.
         title: Plot title.
         output_path: Destination PNG file.
     """
+    def _category(name: str) -> str:
+        upper = name.upper()
+        if "ORIG" in upper:
+            return "orig"
+        if "EASY" in upper:
+            return "easy"
+        return "plain"
+
     df = pd.DataFrame({
         "corpus": sum([[name] * len(scores) for name, scores in corpus_scores.items()], []),
         "score": sum([list(scores) for scores in corpus_scores.values()], []),
     })
+    df["category"] = df["corpus"].apply(_category)
 
     sns.set(style="whitegrid")
     plt.figure(figsize=(8, 6))
-    sns.boxplot(x="corpus", y="score", data=df, palette="muted", hue="corpus")
+    palette = {"orig": "tab:blue", "plain": "tab:orange", "easy": "tab:green"}
+    sns.boxplot(x="corpus", y="score", data=df, hue="category", palette=palette)
     plt.title(title)
-    
     plt.ylabel("Readability Score")
-    # Rotate corpus labels for readability (45°)
+    # Rotate corpus labels for readability (90°) and ensure they are fully visible.
     ax = plt.gca()
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    plt.setp(ax.get_xticklabels(), rotation=90, ha="center")
+    # Adjust bottom margin similar to run_freq.py.
+    fig = plt.gcf()
+    fig.subplots_adjust(bottom=0.35)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=300)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -76,10 +124,12 @@ def main() -> None:
     extractor = lambda cas: FE_TextstatWienerSachtextformel_1().extract(cas)
     feature_names = ["Readability_Score_WienerSachtextformel-1_de"]
     
+    scores_tiger_orig = process_folder(TIGER_ORIG, feature_extractor=extractor, feature_names=feature_names)
+
     # Gather all readability scores from the crawled corpora.
-    scores_crawled_orig = process_folder(CRAWLED_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_crawled_plain = process_folder(CRAWLED_PLAIN, feature_extractor=extractor, feature_names=feature_names)
-    scores_crawled_easy = process_folder(CRAWLED_EASY, feature_extractor=extractor, feature_names=feature_names)
+    scores_crawled_orig = process_folder(ASGC_ORIG, feature_extractor=extractor, feature_names=feature_names)
+    scores_crawled_plain = process_folder(ASGC_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_crawled_easy = process_folder(ASGC_EASY, feature_extractor=extractor, feature_names=feature_names)
 
     # Compute and output the mean readability score for each crawled corpus.
     # Extract the list for the single feature we are interested in.
@@ -105,8 +155,8 @@ def main() -> None:
     )
 
     # German4All dataset
-    scores_g4a_orig = process_folder(GFA_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_g4a_plain = process_folder(GFA_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_orig = process_folder(G4A_ORIG, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_plain = process_folder(G4A_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     mean_g4a_orig = mean(scores_g4a_orig.get(feat, [])) if scores_g4a_orig else float('nan')
     mean_g4a_plain = mean(scores_g4a_plain.get(feat, [])) if scores_g4a_plain else float('nan')
     print(f"Mean readability (g4a orig): {mean_g4a_orig}")
@@ -124,8 +174,8 @@ def main() -> None:
     )
 
     # Deplain dataset
-    scores_deplain_orig = process_folder(DEPLAIN_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_deplain_plain = process_folder(DEPLAIN_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
+    scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     mean_deplain_orig = mean(scores_deplain_orig.get(feat, [])) if scores_deplain_orig else float('nan')
     mean_deplain_plain = mean(scores_deplain_plain.get(feat, [])) if scores_deplain_plain else float('nan')
     print(f"Mean readability (deplain orig): {mean_deplain_orig}")
@@ -141,13 +191,14 @@ def main() -> None:
     # Combined plot for all corpora
     # ---------------------------------------------------------------------
     combined_scores = {
-        "CRAWLED_ORIG": scores_crawled_orig.get(feat, []),
-        "CRAWLED_PLAIN": scores_crawled_plain.get(feat, []),
-        "CRAWLED_EASY": scores_crawled_easy.get(feat, []),
+        "TIGER_ORIG": scores_tiger_orig.get(feat, []),
+        "ASGC_ORIG": scores_crawled_orig.get(feat, []),
+        "ASGC_PLAIN": scores_crawled_plain.get(feat, []),
+        "ASGC_EASY": scores_crawled_easy.get(feat, []),
         "G4A_ORIG": scores_g4a_orig.get(feat, []),
         "G4A_PLAIN": scores_g4a_plain.get(feat, []),
-        "DEPLAIN_ORIG": scores_deplain_orig.get(feat, []),
-        "DEPLAIN_PLAIN": scores_deplain_plain.get(feat, []),
+        "DEplain_ORIG": scores_deplain_orig.get(feat, []),
+        "DEplain_PLAIN": scores_deplain_plain.get(feat, []),
         "Leiko_PLAIN": scores_leiko_plain.get(feat, []),
     }
     _plot_scores(

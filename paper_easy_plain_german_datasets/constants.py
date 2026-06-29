@@ -1,13 +1,15 @@
 from pathlib import Path
 
-CRAWLED_ORIG = Path("data/crawled/orig")
-CRAWLED_PLAIN = Path("data/crawled/plain")
-CRAWLED_EASY = Path("data/crawled/easy")
+TIGER_ORIG = Path("data/Tiger/orig")
 
-GFA_ORIG = Path("data/german4all/orig")
-GFA_PLAIN = Path("data/german4all/plain")
+ASGC_ORIG = Path("data/asgc/orig")
+ASGC_PLAIN = Path("data/asgc/plain")
+ASGC_EASY = Path("data/asgc/easy")
 
-DEPLAIN_ORIG = Path("data/deplain/orig")
-DEPLAIN_PLAIN = Path("data/deplain/plain")
+G4A_ORIG = Path("data/german4all/orig")
+G4A_PLAIN = Path("data/german4all/plain")
+
+DEplain_ORIG = Path("data/deplain/orig")
+DEplain_PLAIN = Path("data/deplain/plain")
 
 Leiko_PLAIN = Path("data/Leiko_1.5/plain")

@@ -23,33 +23,56 @@ def _plot_sentence_lengths(corpus_scores: dict, title: str, output_path: Path) -
         "score": sum([list(scores) for scores in corpus_scores.values()], []),
     })
 
+    # Helper to map a corpus identifier to its high‑level category (orig, plain, easy).
+    def _category(name: str) -> str:
+        upper = name.upper()
+        if "ORIG" in upper:
+            return "orig"
+        if "EASY" in upper:
+            return "easy"
+        return "plain"
+
+    # Add a ``category`` column so that all corpora of the same category share a colour.
+    df["category"] = df["corpus"].apply(_category)
+
     sns.set(style="whitegrid")
     plt.figure(figsize=(10, 6))
-    # Violin plot with muted palette for consistency.
-    sns.violinplot(x="corpus", y="score", hue="corpus", data=df, inner="quartile", palette="muted", legend=False)
+    # Use the same colour scheme as in run_readability.
+    palette = {"orig": "tab:blue", "plain": "tab:orange", "easy": "tab:green"}
+    sns.violinplot(
+        x="corpus",
+        y="score",
+        hue="category",
+        data=df,
+        inner="quartile",
+        palette=palette,
+        legend=False,
+    )
     plt.title(title)
     plt.ylabel("Tokens per Sentence")
     plt.xlabel("Corpus")
-    # Rotate x‑axis labels 45° for readability.
     ax = plt.gca()
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="center")
+    fig = plt.gcf()
+    fig.subplots_adjust(bottom=0.35)
     plt.tight_layout()
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=300)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
 from utils import process_folder
 import utils as utils_mod
 from constants import (
-    CRAWLED_ORIG,
-    CRAWLED_PLAIN,
-    CRAWLED_EASY,
-    GFA_ORIG,
-    GFA_PLAIN,
-    DEPLAIN_ORIG,
-    DEPLAIN_PLAIN,
-    Leiko_PLAIN,
+    TIGER_ORIG,
+    ASGC_ORIG,
+    ASGC_PLAIN,
+    ASGC_EASY,
+    G4A_ORIG,
+    G4A_PLAIN,
+    DEplain_ORIG,
+    DEplain_PLAIN,
+    Leiko_PLAIN
 )
 from py_lift.extractors import FE_TokensPerSentence
 
@@ -61,16 +84,18 @@ def main() -> None:
             'Token_COUNT_PER_Sentence_COUNT'
     ]
 
-    scores_crawled_orig = process_folder(CRAWLED_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_crawled_plain = process_folder(CRAWLED_PLAIN, feature_extractor=extractor, feature_names=feature_names)
-    scores_crawled_easy = process_folder(CRAWLED_EASY, feature_extractor=extractor, feature_names=feature_names)
+    scores_tiger_orig = process_folder(TIGER_ORIG, feature_extractor=extractor, feature_names=feature_names)
+  
+    scores_crawled_orig = process_folder(ASGC_ORIG, feature_extractor=extractor, feature_names=feature_names)
+    scores_crawled_plain = process_folder(ASGC_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_crawled_easy = process_folder(ASGC_EASY, feature_extractor=extractor, feature_names=feature_names)
 
-    scores_g4a_orig = process_folder(GFA_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_g4a_plain = process_folder(GFA_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_orig = process_folder(G4A_ORIG, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_plain = process_folder(G4A_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
-    scores_deplain_orig = process_folder(DEPLAIN_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_deplain_plain = process_folder(DEPLAIN_PLAIN, feature_extractor=extractor, feature_names=feature_names)
-    
+    scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
+    scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+
     scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     
     # ---------------------------------------------------------------------
@@ -81,24 +106,26 @@ def main() -> None:
         return {name: (mean(scores_dict.get(name, [])) if scores_dict.get(name) else float('nan')) for name in feature_names}
 
     avg_by_corpus: dict[str, dict[str, float]] = {
-        "CRAWLED_ORIG": compute_avg(scores_crawled_orig),
-        "DEPLAIN_ORIG": compute_avg(scores_deplain_orig),
+        "TIGER_ORIG": compute_avg(scores_tiger_orig),
+        "ASGC_ORIG": compute_avg(scores_crawled_orig),
+        "DEplain_ORIG": compute_avg(scores_deplain_orig),
         "G4A_ORIG": compute_avg(scores_g4a_orig),
-        "CRAWLED_PLAIN": compute_avg(scores_crawled_plain),
-        "DEPLAIN_PLAIN": compute_avg(scores_deplain_plain),
+        "ASGC_PLAIN": compute_avg(scores_crawled_plain),
+        "DEplain_PLAIN": compute_avg(scores_deplain_plain),
         "G4A_PLAIN": compute_avg(scores_g4a_plain),
-        "CRAWLED_EASY": compute_avg(scores_crawled_easy),
+        "ASGC_EASY": compute_avg(scores_crawled_easy),
         "Leiko_PLAIN": compute_avg(scores_leiko_plain),
     }
 
     # Plot violin + swarm for sentence length distribution across corpora.
     _plot_sentence_lengths(
         {
-            "CRAWLED_ORIG": scores_crawled_orig.get(feature_names[0], []),
-            "CRAWLED_PLAIN": scores_crawled_plain.get(feature_names[0], []),
-            "CRAWLED_EASY": scores_crawled_easy.get(feature_names[0], []),
-            "DEPLAIN_ORIG": scores_deplain_orig.get(feature_names[0], []),
-            "DEPLAIN_PLAIN": scores_deplain_plain.get(feature_names[0], []),
+            "TIGER_ORIG": scores_tiger_orig.get(feature_names[0], []),
+            "ASGC_ORIG": scores_crawled_orig.get(feature_names[0], []),
+            "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
+            "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
+            "DEplain_ORIG": scores_deplain_orig.get(feature_names[0], []),
+            "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
             "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
             "G4A_PLAIN": scores_g4a_plain.get(feature_names[0], []),
             "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
@@ -138,13 +165,14 @@ def main() -> None:
 
     all_entries: list[tuple[float, str]] = []
     for label, path in {
-        "CRAWLED_ORIG": CRAWLED_ORIG,
-        "CRAWLED_PLAIN": CRAWLED_PLAIN,
-        "CRAWLED_EASY": CRAWLED_EASY,
-        "G4A_ORIG": GFA_ORIG,
-        "G4A_PLAIN": GFA_PLAIN,
-        "DEPLAIN_ORIG": DEPLAIN_ORIG,
-        "DEPLAIN_PLAIN": DEPLAIN_PLAIN,
+        "TIGER_ORIG": TIGER_ORIG,
+        "ASGC_ORIG": ASGC_ORIG,
+        "ASGC_PLAIN": ASGC_PLAIN,
+        "ASGC_EASY": ASGC_EASY,
+        "G4A_ORIG": G4A_ORIG,
+        "G4A_PLAIN": G4A_PLAIN,
+        "DEplain_ORIG": DEplain_ORIG,
+        "DEplain_PLAIN": DEplain_PLAIN,
         "Leiko_PLAIN": Leiko_PLAIN,
     }.items():
         all_entries.extend(_collect_lengths(path, label))
