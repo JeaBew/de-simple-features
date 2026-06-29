@@ -76,6 +76,54 @@ def _plot_scores(corpus_scores: dict, title: str, output_path: Path) -> None:
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
+def _plot_scores_horizontal(corpus_scores: dict, title: str, output_path: Path) -> None:
+    """Create a horizontal violin + swarm plot for readability scores.
+
+    Mirrors :func:`_plot_scores` but swaps the axes so that corpus names are on
+    the y‑axis and the readability score is on the x‑axis. This makes it easier
+    to compare values when there are many corpora.
+    """
+    def _category(name: str) -> str:
+        upper = name.upper()
+        if "ORIG" in upper:
+            return "orig"
+        if "EASY" in upper:
+            return "easy"
+        return "plain"
+
+    df = pd.DataFrame({
+        "corpus": sum([[name] * len(scores) for name, scores in corpus_scores.items()], []),
+        "score": sum([list(scores) for scores in corpus_scores.values()], []),
+    })
+    df["category"] = df["corpus"].apply(_category)
+
+    sns.set(style="whitegrid")
+    # Use a slightly narrower figure width for a compact horizontal layout.
+    plt.figure(figsize=(8, 6))
+    palette = {"orig": "tab:blue", "plain": "tab:orange", "easy": "tab:green"}
+    sns.violinplot(
+        x="score",
+        y="corpus",
+        hue="category",
+        data=df,
+        inner="quartile",
+        palette=palette,
+        legend=False,
+    )
+    # Horizontal swarm overlay.
+    sns.swarmplot(x="score", y="corpus", data=df, color="k", alpha=0.5, size=3)
+    plt.title(title)
+    plt.xlabel("Readability Score")
+    plt.ylabel("Corpus")
+    ax = plt.gca()
+    # Ensure corpus labels are fully visible.
+    plt.setp(ax.get_yticklabels(), rotation=0, ha="right")
+    fig = plt.gcf()
+    fig.subplots_adjust(left=0.30, right=0.95)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
 
 def _plot_box(corpus_scores: dict, title: str, output_path: Path) -> None:
     """Create a box plot for the given scores using the same colour scheme as
@@ -205,6 +253,12 @@ def main() -> None:
         combined_scores,
         "Readability Distribution Across All Corpora",
         Path("output") / "all_readability.png",
+    )
+    # Horizontal version of the combined readability plot.
+    _plot_scores_horizontal(
+        combined_scores,
+        "Readability Distribution Across All Corpora",
+        Path("output") / "all_readability_horizontal.png",
     )
     # Additional box plot for Deplain dataset
     _plot_box(
