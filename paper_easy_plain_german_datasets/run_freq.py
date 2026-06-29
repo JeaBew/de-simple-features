@@ -6,6 +6,8 @@ from statistics import mean
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Optional
+from py_lift.utils.core import load_cas_from_xmi_with_lift_ts
 from typing import Mapping
 
 def plot_stacked_bars(avg_scores_by_corpus, output_path):
@@ -177,6 +179,81 @@ from constants import (
 from py_lift.annotators.frequency import SE_TokenZipfFrequency
 from py_lift.extractors_specific import FE_FreqBandRatios
 
+BAND_ORDER = ["f7", "f6", "f5", "f4", "f3", "f2", "f1", "oov"]
+
+
+def get_freq_token(
+    corpus_dir: Path,
+    out_csv: Optional[Path] = None,
+    lang: str = "de",
+) -> pd.DataFrame:
+    """
+    Aggregiert pro Wort (lowercased) über alle XMIs in corpus_dir:
+    - count: Häufigkeit (Tokenanzahl)
+    - band: Frequency band (Mehrheitsentscheidung, falls inkonsistent)
+
+    Erwartet Frequency-Annotationen vom Typ 'org.lift.type.Frequency' mit Feature 'frequencyBand'.
+    """
+    # word -> total token count
+    word_counts: dict[str, int] = {}
+    # word -> band -> count (um Mehrheitsband zu wählen)
+    word_band_votes: dict[str, dict[str, int]] = {}
+
+    xmi_files = sorted(corpus_dir.glob("*.xmi"))
+    for xmi_file in tqdm(xmi_files, desc=f"Processing {corpus_dir}"):
+        cas = load_cas_from_xmi_with_lift_ts(xmi_file)
+
+        # Falls Frequency-Annos noch nicht drin sind, annotieren:
+        SE_TokenZipfFrequency(lang).process(cas)
+
+        # Map: (begin,end) -> frequencyBand
+        freq_by_span: dict[tuple[int, int], str] = {}
+        for freq in cas.select("org.lift.type.Frequency"):
+            band = freq.get("frequencyBand")
+            if band is None:
+                continue
+            freq_by_span[(int(freq.begin), int(freq.end))] = str(band).strip().lower()
+
+        for tok in cas.select("Token"):
+            word = tok.get_covered_text()
+            if not word:
+                continue
+            word = word.strip().lower()
+            if not word:
+                continue
+
+            span = (int(tok.begin), int(tok.end))
+            band = freq_by_span.get(span, "oov")  # fallback, falls keine Frequency gefunden
+
+            word_counts[word] = word_counts.get(word, 0) + 1
+            word_band_votes.setdefault(word, {})
+            word_band_votes[word][band] = word_band_votes[word].get(band, 0) + 1
+
+    # Ergebnis-Tabelle bauen
+    rows = []
+    for word, cnt in word_counts.items():
+        votes = word_band_votes.get(word, {})
+        # wähle Band mit meisten Votes; Tie-break nach BAND_ORDER
+        def rank(b: str) -> int:
+            return BAND_ORDER.index(b) if b in BAND_ORDER else 999
+
+        best_band = sorted(votes.items(), key=lambda kv: (-kv[1], rank(kv[0])))[0][0] if votes else "oov"
+        rows.append({"word": word, "count": cnt, "band": best_band})
+
+    df = pd.DataFrame(rows)
+    df["band"] = pd.Categorical(df["band"], categories=BAND_ORDER, ordered=True)
+    df = df.sort_values(by=["band", "count", "word"], ascending=[True, False, True]).reset_index(drop=True)
+
+    if out_csv is not None:
+        out_csv.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(out_csv, index=False)
+
+    return df
+
+
+
+
+
 def main() -> None:
     extractor = lambda cas: (
         SE_TokenZipfFrequency("de").process(cas),
@@ -231,6 +308,9 @@ def main() -> None:
     # Plot grouped bars (features on x‑axis) for all corpora.
     plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
     plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
+
+
+
 
 if __name__ == "__main__":
     main()
