@@ -221,3 +221,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 .idea
+paper_easy_plain_german_datasets/data
+paper_easy_plain_german_datasets/datasets_raw
+paper_easy_plain_german_datasets/output
