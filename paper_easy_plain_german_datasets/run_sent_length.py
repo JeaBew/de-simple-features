@@ -7,7 +7,20 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Mapping
-import utils as utils_mod
+from utils import _category, process_folder
+from constants import (
+    TIGER_ORIG,
+    ASGC_ORIG,
+    ASGC_PLAIN,
+    ASGC_EASY,
+    G4A_ORIG,
+    G4A_EASY,
+    DEplain_ORIG,
+    DEplain_PLAIN,
+    Leiko_EASY
+)
+from py_lift.extractors import FE_TokensPerSentence
+
 
 def _plot_sentence_lengths(corpus_scores: dict, title: str, output_path: Path) -> None:
     """Create a violin plot with a swarm overlay for sentence length scores.
@@ -113,20 +126,6 @@ def _plot_sentence_lengths_horizontal(corpus_scores: dict, title: str, output_pa
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
-from utils import process_folder
-import utils as utils_mod
-from constants import (
-    TIGER_ORIG,
-    ASGC_ORIG,
-    ASGC_PLAIN,
-    ASGC_EASY,
-    G4A_ORIG,
-    G4A_PLAIN,
-    DEplain_ORIG,
-    DEplain_PLAIN,
-    Leiko_PLAIN
-)
-from py_lift.extractors import FE_TokensPerSentence
 
 def main() -> None:
     extractor = lambda cas: (
@@ -143,12 +142,12 @@ def main() -> None:
     scores_crawled_easy = process_folder(ASGC_EASY, feature_extractor=extractor, feature_names=feature_names)
 
     scores_g4a_orig = process_folder(G4A_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_g4a_plain = process_folder(G4A_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_easy = process_folder(G4A_EASY, feature_extractor=extractor, feature_names=feature_names)
 
     scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
-    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
     
     # ---------------------------------------------------------------------
     # Compute the average score for each feature across all documents.
@@ -164,9 +163,9 @@ def main() -> None:
         "G4A_ORIG": compute_avg(scores_g4a_orig),
         "ASGC_PLAIN": compute_avg(scores_crawled_plain),
         "DEplain_PLAIN": compute_avg(scores_deplain_plain),
-        "G4A_PLAIN": compute_avg(scores_g4a_plain),
+        "G4A_EASY": compute_avg(scores_g4a_easy),
         "ASGC_EASY": compute_avg(scores_crawled_easy),
-        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
+        "Leiko_EASY": compute_avg(scores_leiko_easy),
     }
 
     # Plot violin + swarm for sentence length distribution across corpora.
@@ -174,13 +173,13 @@ def main() -> None:
         {
             "TIGER_ORIG": scores_tiger_orig.get(feature_names[0], []),
             "ASGC_ORIG": scores_crawled_orig.get(feature_names[0], []),
-            "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
-            "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
             "DEplain_ORIG": scores_deplain_orig.get(feature_names[0], []),
-            "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
             "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
-            "G4A_PLAIN": scores_g4a_plain.get(feature_names[0], []),
-            "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
+            "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
+            "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
+            "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
+            "G4A_EASY": scores_g4a_easy.get(feature_names[0], []),
+            "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),
         },
         "Sentence Length Distribution (Tokens per Sentence)",
         Path("output") / "sentence_length.png",
@@ -191,13 +190,13 @@ def main() -> None:
         {
             "TIGER_ORIG": scores_tiger_orig.get(feature_names[0], []),
             "ASGC_ORIG": scores_crawled_orig.get(feature_names[0], []),
-            "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
-            "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
             "DEplain_ORIG": scores_deplain_orig.get(feature_names[0], []),
-            "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
             "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
-            "G4A_PLAIN": scores_g4a_plain.get(feature_names[0], []),
-            "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
+            "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
+            "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
+            "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
+            "G4A_EASY": scores_g4a_easy.get(feature_names[0], []),
+            "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),
         },
         "Sentence Length Distribution (Tokens per Sentence)",
         Path("output") / "sentence_length_horizontal.png",
@@ -239,10 +238,10 @@ def main() -> None:
     #     "ASGC_PLAIN": ASGC_PLAIN,
     #     "ASGC_EASY": ASGC_EASY,
     #     "G4A_ORIG": G4A_ORIG,
-    #     "G4A_PLAIN": G4A_PLAIN,
+    #     "G4A_EASY": G4A_EASY,
     #     "DEplain_ORIG": DEplain_ORIG,
     #     "DEplain_PLAIN": DEplain_PLAIN,
-    #     "Leiko_PLAIN": Leiko_PLAIN,
+    #     "Leiko_EASY": Leiko_EASY,
     # }.items():
     #     all_entries.extend(_collect_lengths(path, label))
 

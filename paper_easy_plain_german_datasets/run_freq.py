@@ -6,9 +6,24 @@ from statistics import mean
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Optional
+from typing import Mapping, Optional
 from py_lift.utils.core import load_cas_from_xmi_with_lift_ts
-from typing import Mapping
+from utils import process_folder
+from constants import (
+    TIGER_ORIG,
+    ASGC_ORIG,
+    ASGC_PLAIN,
+    ASGC_EASY,
+    G4A_ORIG,
+    G4A_EASY,
+    DEplain_ORIG,
+    DEplain_PLAIN,
+    Leiko_EASY
+)
+from py_lift.annotators.frequency import SE_TokenZipfFrequency
+from py_lift.extractors_specific import FE_FreqBandRatios
+
+BAND_ORDER = ["f7", "f6", "f5", "f4", "f3", "f2", "f1", "oov"]
 
 def plot_stacked_bars(avg_scores_by_corpus, output_path):
     first_corpus_scores = next(iter(avg_scores_by_corpus.values()))
@@ -164,24 +179,6 @@ def plot_grouped_bars(avg_scores_by_corpus, output_path):
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
     plt.show()
 
-from utils import process_folder
-from constants import (
-    TIGER_ORIG,
-    ASGC_ORIG,
-    ASGC_PLAIN,
-    ASGC_EASY,
-    G4A_ORIG,
-    G4A_PLAIN,
-    DEplain_ORIG,
-    DEplain_PLAIN,
-    Leiko_PLAIN
-)
-from py_lift.annotators.frequency import SE_TokenZipfFrequency
-from py_lift.extractors_specific import FE_FreqBandRatios
-
-BAND_ORDER = ["f7", "f6", "f5", "f4", "f3", "f2", "f1", "oov"]
-
-
 def get_freq_token(
     corpus_dir: Path,
     out_csv: Optional[Path] = None,
@@ -277,12 +274,12 @@ def main() -> None:
     scores_asgc_easy = process_folder(ASGC_EASY, feature_extractor=extractor, feature_names=feature_names)
 
     scores_g4a_orig = process_folder(G4A_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_g4a_plain = process_folder(G4A_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_easy = process_folder(G4A_EASY, feature_extractor=extractor, feature_names=feature_names)
 
     scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
-    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
     
     # ---------------------------------------------------------------------
     # Compute the average score for each feature across all documents.
@@ -294,22 +291,21 @@ def main() -> None:
     avg_by_corpus: dict[str, dict[str, float]] = {
         "TIGER_ORIG": compute_avg(scores_tiger_orig),
         "ASGC_ORIG": compute_avg(scores_asgc_orig),
-        "ASGC_PLAIN": compute_avg(scores_asgc_plain),
-        "ASGC_EASY": compute_avg(scores_asgc_easy),
         "G4A_ORIG": compute_avg(scores_g4a_orig),
-        "G4A_PLAIN": compute_avg(scores_g4a_plain),
         "DEplain_ORIG": compute_avg(scores_deplain_orig),
+        "ASGC_PLAIN": compute_avg(scores_asgc_plain),
         "DEplain_PLAIN": compute_avg(scores_deplain_plain),
-        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
+        "ASGC_EASY": compute_avg(scores_asgc_easy),
+        "G4A_EASY": compute_avg(scores_g4a_easy),
+        "Leiko_EASY": compute_avg(scores_leiko_easy),
     }
 
     # Plot stacked bars for all corpora.
     plot_stacked_bars(avg_by_corpus, output_path=Path("output") / "freq_stacked.png")
+    
     # Plot grouped bars (features on x‑axis) for all corpora.
-    plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
-    plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
-
-
+    #plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
+    #plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
 
 
 if __name__ == "__main__":

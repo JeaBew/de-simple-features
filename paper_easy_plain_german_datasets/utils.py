@@ -71,6 +71,26 @@ def get_corpus_slug(folder: Path) -> str:
     """
     return str(folder).replace(os.sep, "-")
 
+# ---------------------------------------------------------------------------
+# Helper to map a corpus name to a high‑level category used for colour palettes
+# in the various plotting scripts. The function is deliberately prefixed with an
+# underscore because it is an internal utility, but it is shared across the
+# "runner" scripts (run_sent_length.py, run_token_length.py, etc.).
+# ---------------------------------------------------------------------------
+def _category(name: str) -> str:
+    """Return a simple category string (``orig``, ``plain`` or ``easy``).
+
+    The logic mirrors the duplicated helpers that previously lived in each
+    runner script. It inspects the upper‑cased corpus identifier and classifies
+    it based on the presence of the substrings ``ORIG`` or ``EASY``.
+    """
+    upper = name.upper()
+    if "ORIG" in upper:
+        return "orig"
+    if "EASY" in upper:
+        return "easy"
+    return "plain"
+
 def _extract_scores_from_cas(cas, feature_name: str) -> list[float]:
     for feature in cas.select("org.lift.type.FeatureAnnotationNumeric"):        
         if feature.get('name') == feature_name:
@@ -147,9 +167,9 @@ def process_folder(
     use_cache: bool = True,
     *,
     # Callable that receives a CAS and performs one or more extractions.
-    feature_extractor: Callable[[Any], None] = lambda cas: FE_TextstatWienerSachtextformel_1().extract(cas),
+    feature_extractor: Callable[[Any], None],
     # List of feature annotation names to collect.
-    feature_names: List[str] = ["Readability_Score_WienerSachtextformel-1_de"],
+    feature_names: List[str],
 ) -> Dict[str, List[float]]:
     """Process *dir* and return all readability scores (or other feature scores).
 

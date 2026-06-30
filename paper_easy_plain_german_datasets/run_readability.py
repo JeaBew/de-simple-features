@@ -6,17 +6,17 @@ from statistics import mean
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from utils import process_folder
+from utils import process_folder, _category
 from constants import (
     TIGER_ORIG,
     ASGC_ORIG,
     ASGC_PLAIN,
     ASGC_EASY,
     G4A_ORIG,
-    G4A_PLAIN,
+    G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
-    Leiko_PLAIN
+    Leiko_EASY
 )
 from py_lift.readability import FE_TextstatWienerSachtextformel_1  # type: ignore
 
@@ -34,15 +34,7 @@ def _plot_scores(corpus_scores: dict, title: str, output_path: Path) -> None:
         output_path: File path where the PNG image will be saved.
     """
     # Helper to map a corpus identifier to its high‑level category.
-    def _category(name: str) -> str:
-        upper = name.upper()
-        if "ORIG" in upper:
-            return "orig"
-        if "EASY" in upper:
-            return "easy"
-        return "plain"
-
-    # Prepare DataFrame with an additional ``category`` column.
+    # Use shared category helper from utils.
     df = pd.DataFrame({
         "corpus": sum([[name] * len(scores) for name, scores in corpus_scores.items()], []),
         "score": sum([list(scores) for scores in corpus_scores.values()], []),
@@ -83,14 +75,6 @@ def _plot_scores_horizontal(corpus_scores: dict, title: str, output_path: Path) 
     the y‑axis and the readability score is on the x‑axis. This makes it easier
     to compare values when there are many corpora.
     """
-    def _category(name: str) -> str:
-        upper = name.upper()
-        if "ORIG" in upper:
-            return "orig"
-        if "EASY" in upper:
-            return "easy"
-        return "plain"
-
     df = pd.DataFrame({
         "corpus": sum([[name] * len(scores) for name, scores in corpus_scores.items()], []),
         "score": sum([list(scores) for scores in corpus_scores.values()], []),
@@ -134,14 +118,6 @@ def _plot_box(corpus_scores: dict, title: str, output_path: Path) -> None:
         title: Plot title.
         output_path: Destination PNG file.
     """
-    def _category(name: str) -> str:
-        upper = name.upper()
-        if "ORIG" in upper:
-            return "orig"
-        if "EASY" in upper:
-            return "easy"
-        return "plain"
-
     df = pd.DataFrame({
         "corpus": sum([[name] * len(scores) for name, scores in corpus_scores.items()], []),
         "score": sum([list(scores) for scores in corpus_scores.values()], []),
@@ -204,19 +180,19 @@ def main() -> None:
 
     # German4All dataset
     scores_g4a_orig = process_folder(G4A_ORIG, feature_extractor=extractor, feature_names=feature_names)
-    scores_g4a_plain = process_folder(G4A_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    scores_g4a_easy = process_folder(G4A_EASY, feature_extractor=extractor, feature_names=feature_names)
     mean_g4a_orig = mean(scores_g4a_orig.get(feat, [])) if scores_g4a_orig else float('nan')
-    mean_g4a_plain = mean(scores_g4a_plain.get(feat, [])) if scores_g4a_plain else float('nan')
+    mean_g4a_easy = mean(scores_g4a_easy.get(feat, [])) if scores_g4a_easy else float('nan')
     print(f"Mean readability (g4a orig): {mean_g4a_orig}")
-    print(f"Mean readability (g4a plain): {mean_g4a_plain}")
+    print(f"Mean readability (g4a easy): {mean_g4a_easy}")
     _plot_scores(
-        {"orig": scores_g4a_orig.get(feat, []), "plain": scores_g4a_plain.get(feat, [])},
+        {"orig": scores_g4a_orig.get(feat, []), "easy": scores_g4a_easy.get(feat, [])},
         "German4All Readability Distribution",
         Path("output") / "g4a_readability.png",
     )
     # Additional box plot for German4All dataset
     _plot_box(
-        {"orig": scores_g4a_orig.get(feat, []), "plain": scores_g4a_plain.get(feat, [])},
+        {"orig": scores_g4a_orig.get(feat, []), "easy": scores_g4a_easy.get(feat, [])},
         "German4All Readability Box Plot",
         Path("output") / "g4a_box.png",
     )
@@ -233,21 +209,27 @@ def main() -> None:
         "Deplain Readability Distribution",
         Path("output") / "deplain_readability.png",
     )
-
-    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
+    # Additional box plot for Deplain dataset
+    _plot_box(
+        {"orig": scores_deplain_orig.get(feat, []), "plain": scores_deplain_plain.get(feat, [])},
+        "Deplain Readability Box Plot",
+        Path("output") / "deplain_box.png",
+    )
+    
+    scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
     # ---------------------------------------------------------------------
     # Combined plot for all corpora
     # ---------------------------------------------------------------------
     combined_scores = {
         "TIGER_ORIG": scores_tiger_orig.get(feat, []),
         "ASGC_ORIG": scores_crawled_orig.get(feat, []),
-        "ASGC_PLAIN": scores_crawled_plain.get(feat, []),
-        "ASGC_EASY": scores_crawled_easy.get(feat, []),
-        "G4A_ORIG": scores_g4a_orig.get(feat, []),
-        "G4A_PLAIN": scores_g4a_plain.get(feat, []),
         "DEplain_ORIG": scores_deplain_orig.get(feat, []),
+        "G4A_ORIG": scores_g4a_orig.get(feat, []),
+        "ASGC_PLAIN": scores_crawled_plain.get(feat, []),
         "DEplain_PLAIN": scores_deplain_plain.get(feat, []),
-        "Leiko_PLAIN": scores_leiko_plain.get(feat, []),
+        "ASGC_EASY": scores_crawled_easy.get(feat, []),
+        "G4A_EASY": scores_g4a_easy.get(feat, []),
+        "Leiko_EASY": scores_leiko_easy.get(feat, []),
     }
     _plot_scores(
         combined_scores,
@@ -259,12 +241,6 @@ def main() -> None:
         combined_scores,
         "Readability Distribution Across All Corpora",
         Path("output") / "all_readability_horizontal.png",
-    )
-    # Additional box plot for Deplain dataset
-    _plot_box(
-        {"orig": scores_deplain_orig.get(feat, []), "plain": scores_deplain_plain.get(feat, [])},
-        "Deplain Readability Box Plot",
-        Path("output") / "deplain_box.png",
     )
 
 if __name__ == "__main__":
