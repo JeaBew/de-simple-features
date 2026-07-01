@@ -13,6 +13,7 @@ import run_negations
 import run_freq
 import run_readability
 import run_sent_length
+import run_subjunctive
 
 
 def main() -> None:
@@ -20,7 +21,8 @@ def main() -> None:
     run_sent_length.main()
     run_readability.main()
     run_freq.main()
-#    run_negations.main()
+    run_negations.main()
+    run_subjunctive.main()
 
 if __name__ == "__main__":
     main()

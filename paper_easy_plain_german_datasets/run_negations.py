@@ -1,15 +1,15 @@
+import argparse
 import re
 import pandas as pd
 import os
 from pathlib import Path
-from statistics import mean
 from cassis import Cas
 from tqdm import tqdm
-
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict,List,Mapping
+import spacy
+from typing import Dict, List, Mapping
 from utils import get_corpus_slug, _category
 from constants import (
     TIGER_ORIG,
@@ -20,6 +20,7 @@ from constants import (
     G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
+    Leiko_PLAIN,
     Leiko_EASY
 )
 from py_lift.decorators import supported_languages
@@ -34,6 +35,13 @@ from py_lift.utils.core import load_lift_typesystem  # type: ignore
 # Initialise the preprocessing pipeline once – it is safe to reuse across calls.
 prep = Spacy_Preprocessor("de", auto_install_models=True)
 ts = load_lift_typesystem()
+
+# Load spaCy model for sentence segmentation and token inspection.
+nlp = spacy.load("de_core_news_lg")
+# Load negation word list once for fast lookup.
+NEGATION_WORDS = set(
+    (Path(__file__).parent / "negation_words.txt").read_text(encoding="utf-8").splitlines()
+)
 
 # ad hoc type
 NEG = ts.create_type(name='org.lift.type.Negation')
@@ -59,10 +67,22 @@ def run_folder(
     dir: Path,
     use_cache: bool = True,
 ) -> float:
+    """Process a corpus directory.
+
+    Returns the proportion of documents that contain at least one negation
+    token **and** writes every sentence that contains a negation to a result
+    file. Each line in the result file contains the corpus identifier, the
+    source file name, and the matching sentence, separated by tabs.
+    """
 
     if use_cache:
         cache_dir = Path(__file__).parent / "cache" / get_corpus_slug(dir)
         cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # Prepare the result file for this corpus; caller clears it before the first call.
+    result_path = Path("output") / "negation_sentences.txt"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_file = result_path.open("a", encoding="utf-8")
 
     file_count = 0
     docs_with_negation = 0
@@ -71,19 +91,29 @@ def run_folder(
         if not file.is_file():
             continue
 
+        # Read text here so it is always available for sentence extraction.
+        text = file.read_text(encoding="utf-8")
         cas = get_cas_for_file(file, use_cache, cache_dir)
 
         file_count += 1
 
-        # If any token in the document is negation, count the document.
-        if has_negation(cas):
+        has_neg = has_negation(cas)
+        if has_neg:
             docs_with_negation += 1
+
+        # Write each sentence that contains a negation token.
+        if has_neg:
+            corpus_name = get_corpus_slug(dir)
+            doc_spacy = nlp(text)
+            for sent in doc_spacy.sents:
+                if any(tok.lemma_.lower() in NEGATION_WORDS for tok in sent):
+                    sentence_text = sent.text.replace("\n", " ").strip()
+                    result_file.write(f"{corpus_name}\t{file.name}\t{sentence_text}\n")
+
+    result_file.close()
 
     # Proportion of documents that contain at least one negation.
     return docs_with_negation / file_count if file_count > 0 else float("nan")
-
-
-    return aggregated
 
 def get_cas_for_file(
     file: Path,
@@ -163,35 +193,45 @@ def plot_negation_proportions(results: Dict[str, float]) -> None:
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
+# Map corpus names to their paths for CLI selection.
+CORPUS_MAP: Dict[str, Path] = {
+    "TIGER_ORIG": TIGER_ORIG,
+    "ASGC_ORIG": ASGC_ORIG,
+    "ASGC_PLAIN": ASGC_PLAIN,
+    "ASGC_EASY": ASGC_EASY,
+    "G4A_ORIG": G4A_ORIG,
+    "G4A_EASY": G4A_EASY,
+    "DEplain_ORIG": DEplain_ORIG,
+    "DEplain_PLAIN": DEplain_PLAIN,
+    "Leiko_PLAIN": Leiko_PLAIN,
+    "Leiko_EASY": Leiko_EASY,
+}
+
+
 def main() -> None:
-
-    score_tiger_orig = run_folder(TIGER_ORIG)
-
-    score_asgc_orig = run_folder(ASGC_ORIG)
-    score_asgc_plain = run_folder(ASGC_PLAIN)
-    score_asgc_easy = run_folder(ASGC_EASY)
-
-    score_g4a_orig = run_folder(G4A_ORIG)
-    score_g4a_easy = run_folder(G4A_EASY)
-
-    score_deplain_orig = run_folder(DEplain_ORIG)
-    score_deplain_plain = run_folder(DEplain_PLAIN)
-
-    score_leiko_easy = run_folder(Leiko_EASY)
-
-    plot_negation_proportions(
-        {
-            "TIGER_ORIG": score_tiger_orig,
-            "ASGC_ORIG": score_asgc_orig,
-            "DEplain_ORIG": score_deplain_orig,
-            "G4A_ORIG": score_g4a_orig,
-            "ASGC_PLAIN": score_asgc_plain,
-            "DEplain_PLAIN": score_deplain_plain,
-            "ASGC_EASY": score_asgc_easy,
-            "G4A_EASY": score_g4a_easy,
-            "Leiko_EASY": score_leiko_easy,
-        }
+    parser = argparse.ArgumentParser(
+        description="Compute negation proportions and write matching sentences to a file."
     )
+    parser.add_argument(
+        "--corpus",
+        choices=list(CORPUS_MAP.keys()),
+        default=None,
+        help="Process only this corpus. Omit to process all corpora and create the plot.",
+    )
+    args = parser.parse_args()
+
+    # Clear the output file once before any corpus is processed.
+    result_path = Path("output") / "negation_sentences.txt"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text("", encoding="utf-8")
+
+    if args.corpus:
+        proportion = run_folder(CORPUS_MAP[args.corpus])
+        print(f"{args.corpus} negation proportion: {proportion:.4f}")
+        print(f"Sentences written to {result_path}")
+    else:
+        results = {name: run_folder(path) for name, path in CORPUS_MAP.items()}
+        plot_negation_proportions(results)
 
 
 if __name__ == "__main__":

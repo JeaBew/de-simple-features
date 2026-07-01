@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import spacy
 from pathlib import Path
 from statistics import mean
 
@@ -18,6 +19,7 @@ from constants import (
     G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
+    Leiko_PLAIN,
     Leiko_EASY,
 )
 
@@ -57,6 +59,9 @@ def _plot_token_lengths(corpus_scores: dict, title: str, output_path: Path) -> N
 # are required here.
 
 from py_lift.extractors import FE_AverageTokenLength
+
+# Initialise the German spaCy model used for tokenisation.
+nlp = spacy.load("de_core_news_lg")
 
 def _plot_token_lengths_horizontal_violin(scores_dict: dict[str, list[float]], title: str, output_path: Path) -> None:
     """Create a horizontal violin plot for token‑length scores per corpus.
@@ -118,6 +123,7 @@ def main() -> None:
     scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
 
     # ---------------------------------------------------------------------
@@ -134,6 +140,7 @@ def main() -> None:
         "G4A_ORIG": compute_avg(scores_g4a_orig),
         "ASGC_PLAIN": compute_avg(scores_crawled_plain),
         "DEplain_PLAIN": compute_avg(scores_deplain_plain),
+        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
         "G4A_EASY": compute_avg(scores_g4a_easy),
         "ASGC_EASY": compute_avg(scores_crawled_easy),
         "Leiko_EASY": compute_avg(scores_leiko_easy),
@@ -157,6 +164,7 @@ def main() -> None:
         "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
         "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
         "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
+        "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
         "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
         "G4A_EASY": scores_g4a_easy.get(feature_names[0], []),
         "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),
@@ -172,7 +180,7 @@ def main() -> None:
     # Horizontal violin plot showing the same distribution.
     _plot_token_lengths_horizontal_violin(
         token_lengths_dict,
-        "Token Length Distribution (Horizontal)",
+        "Token Length Distribution (Characters per Token)",
         Path("output") / "token_length_horizontal.png",
     )
 
@@ -180,32 +188,29 @@ def main() -> None:
     # Collect all sentence lengths together with corpus and document name,
     # then plot the top N longest sentences (default 20).
     # ---------------------------------------------------------------------
-    def _collect_lengths(corpus_path: Path, label: str) -> list[tuple[float, str]]:
-        """Return a list of (length, identifier) for every sentence in the corpus.
+    def _collect_lengths(corpus_path: Path, label: str) -> list[tuple[int, str, str]]:
+        """Return a list of ``(length, token, identifier)`` for every token in the corpus.
 
         ``identifier`` combines the corpus label and the file name for easy
-        reference in the plot (e.g., "CRAWLED_ORIG/file1.txt").
+        reference in the output (e.g., ``"TIGER_ORIG/file1.txt"``). The function
+        now extracts the actual token strings using the global ``nlp`` pipeline
+        instead of relying on the average‑length feature extractor.
         """
-        cache_dir = Path(__file__).parent / "cache" / get_corpus_slug(corpus_path)
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        entries: list[tuple[float, str]] = []
+        entries: list[tuple[int, str, str]] = []
         for file in corpus_path.iterdir():
             if not file.is_file():
                 continue
-            result = _process_file(
-                file,
-                use_cache=True,
-                cache_dir=cache_dir,
-                feature_extractor=extractor,
-                feature_names=feature_names,
-            )
-            lengths = result.get(feature_names[0], [])
-            for length in lengths:
-                identifier = f"{label}/{file.name}"
-                entries.append((float(length), identifier))
+            text = file.read_text(encoding="utf-8")
+            doc = nlp(text)
+            identifier = f"{label}/{file.name}"
+            for tok in doc:
+                token_str = tok.text
+                length = len(token_str)
+                entries.append((length, token_str, identifier))
         return entries
 
-    all_entries: list[tuple[float, str]] = []
+    # For each corpus, compute and print its top N longest tokens.
+    top_n = 20
     for label, path in {
         "TIGER_ORIG": TIGER_ORIG,
         "ASGC_ORIG": ASGC_ORIG,
@@ -213,20 +218,16 @@ def main() -> None:
         "G4A_ORIG": G4A_ORIG,
         "ASGC_PLAIN": ASGC_PLAIN,
         "DEplain_PLAIN": DEplain_PLAIN,
+        "Leiko_PLAIN": Leiko_PLAIN,
         "ASGC_EASY": ASGC_EASY,
         "G4A_EASY": G4A_EASY,
         "Leiko_EASY": Leiko_EASY,
     }.items():
-        all_entries.extend(_collect_lengths(path, label))
-
-    # Sort by length descending and keep top 20.
-    top_n = 20
-    top_entries = sorted(all_entries, key=lambda x: x[0], reverse=True)[:top_n]
-
-    # Print the top lengths to the console.
-    print(f"Top {top_n} longest tokens across all corpora (characters per token):")
-    for length, identifier in top_entries:
-        print(f"{identifier}: {length:.2f}")
+        entries = _collect_lengths(path, label)
+        top_entries = sorted(entries, key=lambda x: x[0], reverse=True)[:top_n]
+        print(f"Top {top_n} longest tokens in {label} (characters per token):")
+        for length, token_str, identifier in top_entries:
+            print(f"{identifier}: '{token_str}' ({length} chars)")
 
 if __name__ == "__main__":
     main()

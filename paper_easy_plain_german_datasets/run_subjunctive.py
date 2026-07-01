@@ -1,3 +1,4 @@
+import argparse
 import seaborn as sns
 import spacy
 from tqdm import tqdm
@@ -14,6 +15,7 @@ from constants import (
     G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
+    Leiko_PLAIN,
     Leiko_EASY,
 )
 
@@ -57,7 +59,21 @@ def classify_subjunctive(tok):
 def process_folder(
     dir: Path,
 ) -> float:
-    
+    """Process a corpus directory.
+
+    Returns the proportion of documents that contain at least one subjunctive
+    token **and** writes every sentence that contains a subjunctive form to a
+    result file. Each line in the result file contains the corpus identifier,
+    the source file name, and the matching sentence, separated by tabs.
+    """
+
+    # Prepare the result file for this corpus.
+    result_path = Path("output") / "subjunctive_sentences.txt"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    # Open in append mode; the caller is responsible for clearing the file
+    # before the first call (e.g. in __main__).
+    result_file = result_path.open("a", encoding="utf-8")
+
     # Count how many documents contain at least one subjunctive token.
     file_count = 0
     docs_with_subjunctive = 0
@@ -70,9 +86,21 @@ def process_folder(
         doc = nlp(text)
         file_count += 1
 
-        # If any token in the document is subjunctive, count the document.
-        if any(is_subjunctive(tok) for tok in doc):
+        # Determine if the document contains a subjunctive token.
+        has_subjunctive = any(is_subjunctive(tok) for tok in doc)
+        if has_subjunctive:
             docs_with_subjunctive += 1
+
+        # Write each sentence that contains a subjunctive token.
+        if has_subjunctive:
+            corpus_name = get_corpus_slug(dir)
+            for sent in doc.sents:
+                if any(is_subjunctive(tok) for tok in sent):
+                    # Strip newline characters to keep a single‑line record.
+                    sentence_text = sent.text.replace("\n", " ").strip()
+                    result_file.write(f"{corpus_name}\t{file.name}\t{sentence_text}\n")
+
+    result_file.close()
 
     # Proportion of documents that contain at least one subjunctive form.
     return docs_with_subjunctive / file_count if file_count > 0 else float("nan")
@@ -124,30 +152,44 @@ def plot_subjunctive_proportions(results: Dict[str, float]) -> None:
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
 
-if __name__ == "__main__":
-    # Compute proportions for each individual corpus.
-    tiger_results = process_folder(TIGER_ORIG)
-    asgc_orig_results = process_folder(ASGC_ORIG)
-    asgc_plain_results = process_folder(ASGC_PLAIN)
-    asgc_easy_results = process_folder(ASGC_EASY)
-    g4a_orig_results = process_folder(G4A_ORIG)
-    g4a_easy_results = process_folder(G4A_EASY)
-    deplain_orig_results = process_folder(DEplain_ORIG)
-    deplain_plain_results = process_folder(DEplain_PLAIN)
-    leiko_easy_results = process_folder(Leiko_EASY)
-    print(f"Leiko_EASY subjunctive proportion: {leiko_easy_results:.4f}")
+# Map corpus names to their paths for CLI selection.
+CORPUS_MAP: Dict[str, Path] = {
+    "TIGER_ORIG": TIGER_ORIG,
+    "ASGC_ORIG": ASGC_ORIG,
+    "ASGC_PLAIN": ASGC_PLAIN,
+    "ASGC_EASY": ASGC_EASY,
+    "G4A_ORIG": G4A_ORIG,
+    "G4A_EASY": G4A_EASY,
+    "DEplain_ORIG": DEplain_ORIG,
+    "DEplain_PLAIN": DEplain_PLAIN,
+    "Leiko_PLAIN": Leiko_PLAIN,
+    "Leiko_EASY": Leiko_EASY,
+}
 
-    # Gather results into a single dict and plot using the pre‑computed values.
-    results = {
-        "TIGER_ORIG": tiger_results,
-        "ASGC_ORIG": asgc_orig_results,
-        "DEplain_ORIG": deplain_orig_results,
-        "G4A_ORIG": g4a_orig_results,
-        "ASGC_PLAIN": asgc_plain_results,
-        "DEplain_PLAIN": deplain_plain_results,
-        "ASGC_EASY": asgc_easy_results,
-        "G4A_EASY": g4a_easy_results,
-        "Leiko_EASY": leiko_easy_results,
-    }
-    plot_subjunctive_proportions(results)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Compute subjunctive proportions and write matching sentences to a file."
+    )
+    parser.add_argument(
+        "--corpus",
+        choices=list(CORPUS_MAP.keys()),
+        default=None,
+        help="Process only this corpus. Omit to process all corpora and create the plot.",
+    )
+    args = parser.parse_args()
+
+    # Clear the output file once before any corpus is processed.
+    result_path = Path("output") / "subjunctive_sentences.txt"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.write_text("", encoding="utf-8")
+
+    if args.corpus:
+        # Process a single corpus and write its sentences; skip the plot.
+        proportion = process_folder(CORPUS_MAP[args.corpus])
+        print(f"{args.corpus} subjunctive proportion: {proportion:.4f}")
+        print(f"Sentences written to {result_path}")
+    else:
+        # Process all corpora, then plot.
+        results = {name: process_folder(path) for name, path in CORPUS_MAP.items()}
+        plot_subjunctive_proportions(results)
     

@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from pathlib import Path
 from statistics import mean
+from tqdm import tqdm
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -18,6 +19,7 @@ from constants import (
     G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
+    Leiko_PLAIN,
     Leiko_EASY
 )
 from py_lift.annotators.frequency import SE_TokenZipfFrequency
@@ -179,31 +181,193 @@ def plot_grouped_bars(avg_scores_by_corpus, output_path):
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
     plt.show()
 
+def plot_token_proportions(token_counts_by_corpus: Mapping[str, pd.DataFrame], output_path: Path) -> None:
+    """Plot stacked bars of token‑band **proportions** for each corpus.
+
+    ``token_counts_by_corpus`` maps a corpus label to a ``DataFrame`` produced by
+    :func:`get_freq_token`.  The DataFrame contains a ``band`` column with the
+    frequency‑band label for each token (already categorical with the order
+    defined in ``BAND_ORDER``).  This function aggregates the token counts per
+    band, converts them to proportions of the total token count for the
+    corpus, and visualises them as a stacked bar chart – analogous to the
+    ``plot_stacked_bars`` function but based on *raw token frequencies* rather
+    than the averaged extractor ratios.
+    """
+    # Determine the ordering of bands (consistent with the extractor).
+    band_order = list(BAND_ORDER)
+
+    corpus_labels = list(token_counts_by_corpus.keys())
+    # Figure size similar to other plots.
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    colors = sns.color_palette("colorblind", len(band_order))
+    cumulative = {label: 0.0 for label in corpus_labels}
+
+    for idx, band in enumerate(band_order):
+        heights, bottoms = [], []
+        for label in corpus_labels:
+            df = token_counts_by_corpus[label]
+            total_tokens = len(df)
+            if total_tokens == 0:
+                proportion = 0.0
+            else:
+                count = (df["band"] == band).sum()
+                proportion = count / total_tokens
+            heights.append(proportion)
+            bottoms.append(cumulative[label])
+        ax.bar(
+            corpus_labels,
+            heights,
+            bottom=bottoms,
+            label=band,
+            color=colors[idx % len(colors)],
+            width=0.35,
+        )
+        for label, h in zip(corpus_labels, heights):
+            cumulative[label] += h
+
+    ax.set_title("Token‑Band Proportions by Corpus")
+    ax.set_yticks([])
+    ax.set_yticklabels([])
+    plt.setp(ax.get_xticklabels(), rotation=90, ha="center")
+
+    # Legend with short band names.
+    handles, _ = ax.get_legend_handles_labels()
+    # Reverse order to match stacked appearance.
+    handles = handles[::-1]
+    band_labels = [band.upper() for band in band_order][::-1]
+    fig.legend(
+        handles,
+        band_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.97),
+        ncol=4,
+        frameon=False,
+    )
+    fig.subplots_adjust(top=0.80, bottom=0.35)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
+    plt.show()
+
+def _latex_escape(text: str) -> str:
+    """Escape a few characters that have special meaning in LaTeX tables.
+
+    This is a minimal implementation sufficient for the corpus identifiers
+    used in this project (they contain only alphanumerics and underscores).
+    """
+    return text.replace("_", "\\_")
+
+def write_latex_table(avg_by_corpus: Mapping[str, Mapping[str, float]], output_path: Path) -> None:
+    """Write a LaTeX tabular representation of ``avg_by_corpus``.
+
+    The table rows correspond to corpora and the columns correspond to the
+    frequency‑ratio bands ordered ``F7`` … ``F1`` then ``OOV``.  Values are
+    formatted with three decimal places.
+    """
+    # Mapping from the long feature names used in ``avg_by_corpus`` to the short
+    # column headings required for the LaTeX table.
+    feature_map = {
+        "Freq_Ratio_F7_PER_Token": "F7",
+        "Freq_Ratio_F6_PER_Token": "F6",
+        "Freq_Ratio_F5_PER_Token": "F5",
+        "Freq_Ratio_F4_PER_Token": "F4",
+        "Freq_Ratio_F3_PER_Token": "F3",
+        "Freq_Ratio_F2_PER_Token": "F2",
+        "Freq_Ratio_F1_PER_Token": "F1",
+        "Freq_Ratio_OOV_PER_Token": "OOV",
+    }
+    # Desired column order.
+    column_order = ["F7", "F6", "F5", "F4", "F3", "F2", "F1", "OOV"]
+
+    # Build header line.
+    header_cells = ["Corpus"] + column_order
+    # Escape backslashes correctly for LaTeX commands.
+    header = " & ".join(header_cells) + " \\\\ \\hline\n"
+
+    # Build rows.
+    rows = []
+    for corpus, scores in avg_by_corpus.items():
+        # Ensure deterministic order of rows (alphabetical by corpus label).
+        escaped_corpus = _latex_escape(corpus)
+        cell_values = []
+        # Reverse lookup from short name to long feature name.
+        reverse_map = {v: k for k, v in feature_map.items()}
+        for col in column_order:
+            long_name = reverse_map.get(col)
+            val = scores.get(long_name, float("nan"))
+            if isinstance(val, float) and not (val != val):  # not NaN
+                # Round to two decimal places, strip trailing zeros, and drop leading zero.
+                formatted = f"{val:.2f}".rstrip('0').rstrip('.')
+                if formatted.startswith('0.'):
+                    formatted = formatted[1:]  # remove leading zero
+                cell_values.append(formatted)
+            else:
+                cell_values.append("-")
+        row = f"{escaped_corpus} & " + " & ".join(cell_values) + " \\\\"
+        rows.append(row)
+
+    # Assemble full LaTeX table.
+    table_body = "\n".join(rows)
+    latex_content = (
+        "\\begin{table}[htbp]\n"
+        "\\centering\n"
+        "\\begin{tabular}{l" + "r" * len(column_order) + "}\n"
+        "\\toprule\n"
+        + header +
+        table_body + "\n"
+        "\\bottomrule\n"
+        "\\end{tabular}\n"
+        "\\caption{Average frequency‑ratio features per corpus.}\n"
+        "\\label{tab:freq_ratios}\n"
+        "\\end{table}\n"
+    )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(latex_content, encoding="utf-8")
+
 def get_freq_token(
     corpus_dir: Path,
     out_csv: Optional[Path] = None,
     lang: str = "de",
 ) -> pd.DataFrame:
-    """
-    Aggregiert pro Wort (lowercased) über alle XMIs in corpus_dir:
-    - count: Häufigkeit (Tokenanzahl)
-    - band: Frequency band (Mehrheitsentscheidung, falls inkonsistent)
+    """Aggregate token frequencies for a corpus.
 
-    Erwartet Frequency-Annotationen vom Typ 'org.lift.type.Frequency' mit Feature 'frequencyBand'.
+    The original implementation only processed ``*.xmi`` files, which meant that
+    corpora containing plain ``.txt`` files produced empty CSVs.  This function now
+    handles both ``.xmi`` and ``.txt`` inputs:
+
+    * ``.xmi`` – loaded directly via :func:`load_cas_from_xmi_with_lift_ts`.
+    * ``.txt`` – read, tokenised with the shared ``prep`` pipeline from
+      :pymod:`utils`, and then annotated with ``SE_TokenZipfFrequency``.
+
+    The rest of the logic (majority‑vote band selection and DataFrame creation)
+    remains unchanged.
     """
+
+    # Import the preprocessing pipeline used elsewhere in the project.
+    from utils import prep  # type: ignore  # noqa: F401
+
     # word -> total token count
     word_counts: dict[str, int] = {}
-    # word -> band -> count (um Mehrheitsband zu wählen)
+    # word -> band -> count (to decide the majority band)
     word_band_votes: dict[str, dict[str, int]] = {}
 
-    xmi_files = sorted(corpus_dir.glob("*.xmi"))
-    for xmi_file in tqdm(xmi_files, desc=f"Processing {corpus_dir}"):
-        cas = load_cas_from_xmi_with_lift_ts(xmi_file)
+    # Gather both XMI and plain‑text files.
+    files = sorted(list(corpus_dir.glob("*.xmi")) + list(corpus_dir.glob("*.txt")))
+    for file_path in tqdm(files, desc=f"Processing {corpus_dir}"):
+        # Load or create a CAS depending on the file type.
+        if file_path.suffix.lower() == ".xmi":
+            cas = load_cas_from_xmi_with_lift_ts(file_path)
+        else:
+            # Plain text – run the preprocessing pipeline to obtain a CAS.
+            text = file_path.read_text(encoding="utf-8")
+            cas = prep.run(text)
 
-        # Falls Frequency-Annos noch nicht drin sind, annotieren:
+        # Ensure frequency annotations are present.
         SE_TokenZipfFrequency(lang).process(cas)
 
-        # Map: (begin,end) -> frequencyBand
+        # Build a map from token span to its frequency band.
         freq_by_span: dict[tuple[int, int], str] = {}
         for freq in cas.select("org.lift.type.Frequency"):
             band = freq.get("frequencyBand")
@@ -220,35 +384,40 @@ def get_freq_token(
                 continue
 
             span = (int(tok.begin), int(tok.end))
-            band = freq_by_span.get(span, "oov")  # fallback, falls keine Frequency gefunden
+            band = freq_by_span.get(span, "oov")
 
             word_counts[word] = word_counts.get(word, 0) + 1
             word_band_votes.setdefault(word, {})
             word_band_votes[word][band] = word_band_votes[word].get(band, 0) + 1
 
-    # Ergebnis-Tabelle bauen
+    # Build the result table.
     rows = []
     for word, cnt in word_counts.items():
         votes = word_band_votes.get(word, {})
-        # wähle Band mit meisten Votes; Tie-break nach BAND_ORDER
+        # Choose the band with the most votes; break ties using ``BAND_ORDER``.
         def rank(b: str) -> int:
             return BAND_ORDER.index(b) if b in BAND_ORDER else 999
 
-        best_band = sorted(votes.items(), key=lambda kv: (-kv[1], rank(kv[0])))[0][0] if votes else "oov"
+        best_band = (
+            sorted(votes.items(), key=lambda kv: (-kv[1], rank(kv[0])))[0][0]
+            if votes
+            else "oov"
+        )
         rows.append({"word": word, "count": cnt, "band": best_band})
 
     df = pd.DataFrame(rows)
+    # Guard against an empty DataFrame lacking the ``band`` column.
+    if "band" not in df.columns:
+        df = pd.DataFrame(columns=["word", "count", "band"])
     df["band"] = pd.Categorical(df["band"], categories=BAND_ORDER, ordered=True)
-    df = df.sort_values(by=["band", "count", "word"], ascending=[True, False, True]).reset_index(drop=True)
+    if not df.empty:
+        df = df.sort_values(by=["band", "count", "word"], ascending=[True, False, True]).reset_index(drop=True)
 
     if out_csv is not None:
         out_csv.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(out_csv, index=False)
 
     return df
-
-
-
 
 
 def main() -> None:
@@ -279,6 +448,7 @@ def main() -> None:
     scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
     
     # ---------------------------------------------------------------------
@@ -295,6 +465,7 @@ def main() -> None:
         "DEplain_ORIG": compute_avg(scores_deplain_orig),
         "ASGC_PLAIN": compute_avg(scores_asgc_plain),
         "DEplain_PLAIN": compute_avg(scores_deplain_plain),
+        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
         "ASGC_EASY": compute_avg(scores_asgc_easy),
         "G4A_EASY": compute_avg(scores_g4a_easy),
         "Leiko_EASY": compute_avg(scores_leiko_easy),
@@ -305,7 +476,41 @@ def main() -> None:
     
     # Plot grouped bars (features on x‑axis) for all corpora.
     #plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
-    #plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
+
+    # ---------------------------------------------------------------------
+    # Write LaTeX table summarizing the average frequency‑ratio features.
+    # ---------------------------------------------------------------------
+    write_latex_table(avg_by_corpus, output_path=Path("output") / "freq_table.tex")
+
+    # ---------------------------------------------------------------------
+    # Save token frequency tables for each corpus individually.
+    # ---------------------------------------------------------------------
+    freq_output_dir = Path("output") / "freq_token"
+    freq_output_dir.mkdir(parents=True, exist_ok=True)
+    corpus_map = {
+        "TIGER_ORIG": TIGER_ORIG,
+        "ASGC_ORIG": ASGC_ORIG,
+        "ASGC_PLAIN": ASGC_PLAIN,
+        "ASGC_EASY": ASGC_EASY,
+        "G4A_ORIG": G4A_ORIG,
+        "G4A_EASY": G4A_EASY,
+        "DEplain_ORIG": DEplain_ORIG,
+        "DEplain_PLAIN": DEplain_PLAIN,
+        "Leiko_PLAIN": Leiko_PLAIN,
+        "Leiko_EASY": Leiko_EASY,
+    }
+    # Collect token frequency DataFrames for plotting token‑band proportions.
+    token_counts_by_corpus: dict[str, pd.DataFrame] = {}
+    for label, path in corpus_map.items():
+        out_csv = freq_output_dir / f"{label}_freq.csv"
+        df = get_freq_token(path, out_csv=out_csv)
+        token_counts_by_corpus[label] = df
+
+    # Plot token‑band proportion stacked bars.
+    plot_token_proportions(
+        token_counts_by_corpus,
+        output_path=Path("output") / "freq_token_proportions.png",
+    )
 
 
 if __name__ == "__main__":

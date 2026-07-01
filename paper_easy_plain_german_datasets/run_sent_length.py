@@ -17,6 +17,7 @@ from constants import (
     G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
+    Leiko_PLAIN,
     Leiko_EASY
 )
 from py_lift.extractors import FE_TokensPerSentence
@@ -147,6 +148,7 @@ def main() -> None:
     scores_deplain_orig = process_folder(DEplain_ORIG, feature_extractor=extractor, feature_names=feature_names)
     scores_deplain_plain = process_folder(DEplain_PLAIN, feature_extractor=extractor, feature_names=feature_names)
 
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
     
     # ---------------------------------------------------------------------
@@ -163,6 +165,7 @@ def main() -> None:
         "G4A_ORIG": compute_avg(scores_g4a_orig),
         "ASGC_PLAIN": compute_avg(scores_crawled_plain),
         "DEplain_PLAIN": compute_avg(scores_deplain_plain),
+        "Leiko_PLAIN": compute_avg(scores_leiko_plain),
         "G4A_EASY": compute_avg(scores_g4a_easy),
         "ASGC_EASY": compute_avg(scores_crawled_easy),
         "Leiko_EASY": compute_avg(scores_leiko_easy),
@@ -177,6 +180,7 @@ def main() -> None:
             "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
             "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
             "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
+            "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
             "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
             "G4A_EASY": scores_g4a_easy.get(feature_names[0], []),
             "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),
@@ -194,6 +198,7 @@ def main() -> None:
             "G4A_ORIG": scores_g4a_orig.get(feature_names[0], []),
             "ASGC_PLAIN": scores_crawled_plain.get(feature_names[0], []),
             "DEplain_PLAIN": scores_deplain_plain.get(feature_names[0], []),
+            "Leiko_PLAIN": scores_leiko_plain.get(feature_names[0], []),
             "ASGC_EASY": scores_crawled_easy.get(feature_names[0], []),
             "G4A_EASY": scores_g4a_easy.get(feature_names[0], []),
             "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),

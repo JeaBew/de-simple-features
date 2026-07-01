@@ -16,6 +16,7 @@ from constants import (
     G4A_EASY,
     DEplain_ORIG,
     DEplain_PLAIN,
+    Leiko_PLAIN,
     Leiko_EASY
 )
 from py_lift.readability import FE_TextstatWienerSachtextformel_1  # type: ignore
@@ -216,6 +217,7 @@ def main() -> None:
         Path("output") / "deplain_box.png",
     )
     
+    scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
     scores_leiko_easy = process_folder(Leiko_EASY, feature_extractor=extractor, feature_names=feature_names)
     # ---------------------------------------------------------------------
     # Combined plot for all corpora
@@ -227,6 +229,7 @@ def main() -> None:
         "G4A_ORIG": scores_g4a_orig.get(feat, []),
         "ASGC_PLAIN": scores_crawled_plain.get(feat, []),
         "DEplain_PLAIN": scores_deplain_plain.get(feat, []),
+        "Leiko_PLAIN": scores_leiko_plain.get(feat, []),
         "ASGC_EASY": scores_crawled_easy.get(feat, []),
         "G4A_EASY": scores_g4a_easy.get(feat, []),
         "Leiko_EASY": scores_leiko_easy.get(feat, []),

@@ -206,6 +206,54 @@ def process_folder(
             aggregated[name].extend(vals)
     return aggregated
 
+def process_folder_with_filenames(
+    dir: Path,
+    *,
+    feature_extractor: Callable[[Any], None],
+    feature_names: List[str],
+    use_cache: bool = True,
+) -> Dict[Path, Dict[str, List[float]]]:
+    """Process *dir* and return a mapping from each file to its feature scores.
+
+    This helper mirrors :func:`process_folder` but keeps the originating file
+    path so callers can identify which document produced which score.  It is
+    useful for tasks such as locating the document with the highest (or lowest)
+    readability score in a corpus.
+
+    Parameters
+    ----------
+    dir: Path
+        Directory containing the raw text files.
+    feature_extractor: Callable[[Any], None]
+        Callable that extracts the desired feature(s) from a CAS.
+    feature_names: List[str]
+        Names of the feature annotations that the extractor populates.
+    use_cache: bool, default ``True``
+        Whether to use the ``.xmi`` cache (same semantics as ``process_folder``).
+
+    Returns
+    -------
+    Dict[Path, Dict[str, List[float]]]
+        Mapping ``file_path → {feature_name → [scores]}``.
+    """
+    if use_cache:
+        cache_dir = Path(__file__).parent / "cache" / get_corpus_slug(dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+    result: Dict[Path, Dict[str, List[float]]] = {}
+    for file in tqdm(dir.iterdir(), desc=f"Scanning {dir.name}"):
+        if not file.is_file():
+            continue
+        file_result = _process_file(
+            file,
+            use_cache,
+            cache_dir if use_cache else None,
+            feature_extractor=feature_extractor,
+            feature_names=feature_names,
+        )
+        result[file] = file_result
+    return result
+
 def keep_trailing_number_filename(filename: str | Path) -> str:
     """
     Extrahiert die Ziffern am Ende des Dateinamens (vor der Endung) und gibt
