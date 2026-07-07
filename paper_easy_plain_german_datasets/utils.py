@@ -264,3 +264,38 @@ def keep_trailing_number_filename(filename: str | Path) -> str:
     if not m:
         raise ValueError(f"Keine Zahl am Ende des Dateinamens gefunden: {p.name}")
     return f"{m.group(1)}{p.suffix}"
+
+def get_cache_dir_for_folder(dir: Path) -> Path:
+    """Return the cache directory for a corpus folder."""
+    return Path(__file__).parent / "cache" / get_corpus_slug(dir)
+
+
+def load_or_create_cas(
+    file: Path,
+    use_cache: bool = True,
+    cache_dir: Path | None = None,
+):
+    """Load a CAS from cache or create it from a raw text file.
+
+    This is useful for tasks where the caller needs direct access to the CAS,
+    e.g. extracting tokens, lemmas, annotations, etc.
+    """
+    if use_cache:
+        if cache_dir is None:
+            raise ValueError("cache_dir must be provided when use_cache=True")
+
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{file.stem}.xmi"
+
+        if cache_file.is_file():
+            cas = load_cas_from_xmi_with_lift_ts(cache_file)
+        else:
+            text = file.read_text(encoding="utf-8")
+            cas = prep.run(text)
+            cas.to_xmi(str(cache_file))
+
+        return cas
+
+    text = file.read_text(encoding="utf-8")
+    cas = prep.run(text)
+    return cas
