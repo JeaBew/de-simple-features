@@ -170,13 +170,13 @@ def main() -> None:
     _plot_scores(
         {"orig": scores_crawled_orig.get(feat, []), "plain": scores_crawled_plain.get(feat, []), "easy": scores_crawled_easy.get(feat, [])},
         "Crawled Corpus Readability Distribution",
-        Path("output") / "crawled_readability.png",
+        Path("../output") / "crawled_readability.png",
     )
     # Additional box plot for crawled dataset
     _plot_box(
         {"orig": scores_crawled_orig.get(feat, []), "plain": scores_crawled_plain.get(feat, []), "easy": scores_crawled_easy.get(feat, [])},
         "Crawled Corpus Readability Box Plot",
-        Path("output") / "crawled_box.png",
+        Path("../output") / "crawled_box.png",
     )
 
     # German4All dataset
@@ -189,13 +189,13 @@ def main() -> None:
     _plot_scores(
         {"orig": scores_g4a_orig.get(feat, []), "easy": scores_g4a_easy.get(feat, [])},
         "German4All Readability Distribution",
-        Path("output") / "g4a_readability.png",
+        Path("../output") / "g4a_readability.png",
     )
     # Additional box plot for German4All dataset
     _plot_box(
         {"orig": scores_g4a_orig.get(feat, []), "easy": scores_g4a_easy.get(feat, [])},
         "German4All Readability Box Plot",
-        Path("output") / "g4a_box.png",
+        Path("../output") / "g4a_box.png",
     )
 
     # Deplain dataset
@@ -208,13 +208,13 @@ def main() -> None:
     _plot_scores(
         {"orig": scores_deplain_orig.get(feat, []), "plain": scores_deplain_plain.get(feat, [])},
         "Deplain Readability Distribution",
-        Path("output") / "deplain_readability.png",
+        Path("../output") / "deplain_readability.png",
     )
     # Additional box plot for Deplain dataset
     _plot_box(
         {"orig": scores_deplain_orig.get(feat, []), "plain": scores_deplain_plain.get(feat, [])},
         "Deplain Readability Box Plot",
-        Path("output") / "deplain_box.png",
+        Path("../output") / "deplain_box.png",
     )
     
     scores_leiko_plain = process_folder(Leiko_PLAIN, feature_extractor=extractor, feature_names=feature_names)
@@ -237,13 +237,13 @@ def main() -> None:
     _plot_scores(
         combined_scores,
         "Readability Distribution Across All Corpora",
-        Path("output") / "all_readability.png",
+        Path("../output") / "all_readability.png",
     )
     # Horizontal version of the combined readability plot.
     _plot_scores_horizontal(
         combined_scores,
         "Readability Distribution Across All Corpora",
-        Path("output") / "all_readability_horizontal.png",
+        Path("../output") / "all_readability_horizontal.png",
     )
 
 if __name__ == "__main__":

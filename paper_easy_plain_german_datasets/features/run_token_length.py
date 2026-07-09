@@ -174,14 +174,14 @@ def main() -> None:
     _plot_token_lengths(
         token_lengths_dict,
         "Token Length Distribution",
-        Path("output") / "token_length.png",
+        Path("../output") / "token_length.png",
     )
 
     # Horizontal violin plot showing the same distribution.
     _plot_token_lengths_horizontal_violin(
         token_lengths_dict,
         "Token Length Distribution",
-        Path("output") / "token_length_horizontal.png",
+        Path("../output") / "token_length_horizontal.png",
     )
 
     # ---------------------------------------------------------------------

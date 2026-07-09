@@ -186,7 +186,7 @@ def main() -> None:
             "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),
         },
         "Sentence Length Distribution (Tokens per Sentence)",
-        Path("output") / "sentence_length.png",
+        Path("../output") / "sentence_length.png",
     )
 
     # Also generate a horizontal version of the violin plot.
@@ -204,7 +204,7 @@ def main() -> None:
             "Leiko_EASY": scores_leiko_easy.get(feature_names[0], []),
         },
         "Sentence Length Distribution (Tokens per Sentence)",
-        Path("output") / "sentence_length_horizontal.png",
+        Path("../output") / "sentence_length_horizontal.png",
     )
 
     # # ---------------------------------------------------------------------

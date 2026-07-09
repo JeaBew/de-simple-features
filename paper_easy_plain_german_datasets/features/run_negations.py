@@ -80,7 +80,7 @@ def run_folder(
         cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Prepare the result file for this corpus; caller clears it before the first call.
-    result_path = Path("output") / "negation_sentences.txt"
+    result_path = Path("../output") / "negation_sentences.txt"
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_file = result_path.open("a", encoding="utf-8")
 
@@ -188,7 +188,7 @@ def plot_negation_proportions(results: Dict[str, float]) -> None:
     fig.subplots_adjust(left=0.30, right=0.95)
     plt.tight_layout()
     
-    output_path = Path("output") / "negation_proportions.png"
+    output_path = Path("../output") / "negation_proportions.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
     plt.close()
@@ -221,7 +221,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Clear the output file once before any corpus is processed.
-    result_path = Path("output") / "negation_sentences.txt"
+    result_path = Path("../output") / "negation_sentences.txt"
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text("", encoding="utf-8")
 

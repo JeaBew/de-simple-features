@@ -8,12 +8,8 @@ deterministic order so that a single command runs the full suite of analyses.
 
 # Import the individual runner modules. The imports are placed at the top so
 # that any import‑time errors are raised early, making debugging easier.
-import run_token_length
-import run_negations
-import run_freq
-import run_readability
-import run_sent_length
-import run_subjunctive
+from paper_easy_plain_german_datasets.features import run_token_length, run_freq, run_readability, run_sent_length, \
+    run_subjunctive, run_negations
 
 
 def main() -> None:

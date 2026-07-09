@@ -472,7 +472,7 @@ def main() -> None:
     }
 
     # Plot stacked bars for all corpora.
-    plot_stacked_bars(avg_by_corpus, output_path=Path("output") / "freq_stacked.png")
+    plot_stacked_bars(avg_by_corpus, output_path=Path("../output") / "freq_stacked.png")
     
     # Plot grouped bars (features on x‑axis) for all corpora.
     #plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")
@@ -480,12 +480,12 @@ def main() -> None:
     # ---------------------------------------------------------------------
     # Write LaTeX table summarizing the average frequency‑ratio features.
     # ---------------------------------------------------------------------
-    write_latex_table(avg_by_corpus, output_path=Path("output") / "freq_table.tex")
+    write_latex_table(avg_by_corpus, output_path=Path("../output") / "freq_table.tex")
 
     # ---------------------------------------------------------------------
     # Save token frequency tables for each corpus individually.
     # ---------------------------------------------------------------------
-    freq_output_dir = Path("output") / "freq_token"
+    freq_output_dir = Path("../output") / "freq_token"
     freq_output_dir.mkdir(parents=True, exist_ok=True)
     corpus_map = {
         "TIGER_ORIG": TIGER_ORIG,
@@ -509,7 +509,7 @@ def main() -> None:
     # Plot token‑band proportion stacked bars.
     plot_token_proportions(
         token_counts_by_corpus,
-        output_path=Path("output") / "freq_token_proportions.png",
+        output_path=Path("../output") / "freq_token_proportions.png",
     )
 
 
