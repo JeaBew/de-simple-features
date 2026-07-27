@@ -224,3 +224,14 @@ __marimo__/
 paper_easy_plain_german_datasets/data
 paper_easy_plain_german_datasets/datasets_raw
 paper_easy_plain_german_datasets/output
+output
+paper_easy_plain_german_datasets/features/cache/data-asgc-easy
+paper_easy_plain_german_datasets/features/cache/data-asgc-orig
+paper_easy_plain_german_datasets/features/cache/data-asgc-plain
+paper_easy_plain_german_datasets/features/cache/data-deplain-orig
+paper_easy_plain_german_datasets/features/cache/data-deplain-plain
+paper_easy_plain_german_datasets/features/cache/data-german4all-easy
+paper_easy_plain_german_datasets/features/cache/data-german4all-orig
+paper_easy_plain_german_datasets/features/cache/data-Leiko_1.5-easy
+paper_easy_plain_german_datasets/features/cache/data-Leiko_1.5-plain
+paper_easy_plain_german_datasets/features/cache/data-Tiger-orig

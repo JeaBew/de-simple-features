@@ -9,6 +9,8 @@ import pandas as pd
 import html
 import textwrap
 
+from py_lift.extractors import FE_AverageTokenLength, FE_TokenCount
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -17,8 +19,6 @@ CACHE_NORMALIZED_DIR = Path("cache") / "normalized"
 
 AVAILABLE_VIEWS = ["NormalizedView", "_InitialView"]
 DEFAULT_VIEW_NAME = "_InitialView"
-
-FEATURE_NAMES_TO_SHOW: list[str] = []
 
 TOKEN_TYPE_NAME = "de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Token"
 
@@ -29,16 +29,33 @@ ALIGNMENT_VIEWS = {
 
 # TODO: Add the feature names to display later.
 
-# FEATURE_NAMES_TO_SHOW = [
-#     "Token_COUNT_PER_Sentence_COUNT",
-#     "Readability_Score_FleschReadingEase_de",
-# ]
-#FEATURE_NAMES_TO_SHOW: list[str] = []
+FEATURE_NAMES_TO_SHOW = [
+    "Token_length_mean",
+    "Token_COUNT",
+]
 
+DEFAULT_FEATURE_VIEW = "_InitialView"
+
+# Only features listed here are computed from another view.
+# All other features use DEFAULT_FEATURE_VIEW.
+FEATURE_VIEW_OVERRIDES = {
+    #"Token_length_mean": "NormalizedView",
+    # "Token_COUNT": "NormalizedView",
+}
+
+# Ordnet jedem anzuzeigenden Feature den passenden Extractor zu.
+FEATURE_EXTRACTORS: dict[str, Any] = {
+    "Token_length_mean": FE_AverageTokenLength(),
+    "Token_COUNT": FE_TokenCount(),
+}
 
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
+def get_view_name_for_feature(feature_name: str) -> str:
+    """Return the view that should be used for a given feature."""
+    return FEATURE_VIEW_OVERRIDES.get(feature_name, DEFAULT_FEATURE_VIEW)
 
 def render_token_alignment_html(
     alignment_rows: list[dict[str, Any]],
@@ -249,39 +266,45 @@ def get_cas_files(corpus_dir: Path) -> list[Path]:
     ])
 
 
-def extract_selected_features_from_cas(cas: Any) -> dict[str, str]:
-    """Extract selected features from the CAS.
+def compute_selected_features_from_cas(cas: Any) -> dict[str, str]:
+    """Berechnet die gewünschten Features live auf der CAS.
 
-    This is the place where you can later define which features should be shown
-    in the right column.
-
-    Currently, this function looks for ``org.lift.type.FeatureAnnotationNumeric``
-    annotations and filters them by ``FEATURE_NAMES_TO_SHOW``.
+    Statt sich auf bereits in der XMI vorhandene Feature-Annotationen zu
+    verlassen (die im aktuellen Cache nicht persistiert werden), wird der
+    passende Extractor pro Feature direkt auf der jeweils konfigurierten
+    View ausgeführt und der Wert anschließend ausgelesen.
     """
     features: dict[str, str] = {}
 
     if not FEATURE_NAMES_TO_SHOW:
         return features
 
-    wanted = set(FEATURE_NAMES_TO_SHOW)
+    for feature_name in FEATURE_NAMES_TO_SHOW:
+        extractor = FEATURE_EXTRACTORS.get(feature_name)
+        if extractor is None:
+            continue
 
-    try:
-        feature_annotations = cas.select("org.lift.type.FeatureAnnotationNumeric")
-    except Exception:
-        return features
+        view_name = get_view_name_for_feature(feature_name)
+        view = get_view_or_default(cas, view_name)
 
-    for feature in feature_annotations:
         try:
-            name = feature.get("name")
-            value = feature.get("value")
+            extractor.extract(view)
         except Exception:
             continue
 
-        if name in wanted:
-            features[str(name)] = str(value)
+        value = None
+        try:
+            for feature in view.select("org.lift.type.FeatureAnnotationNumeric"):
+                if feature.get("name") == feature_name:
+                    value = feature.get("value")
+                    break
+        except Exception:
+            pass
+
+        if value is not None:
+            features[feature_name] = str(value)
 
     return features
-
 
 @st.cache_data(show_spinner=False)
 def load_cas_display_data(
@@ -305,7 +328,7 @@ def load_cas_display_data(
 
     sofa_string = getattr(view, "sofa_string", None) or ""
 
-    features = extract_selected_features_from_cas(cas)
+    features = compute_selected_features_from_cas(cas)
 
     return {
         "sofa_string": sofa_string,
@@ -344,6 +367,12 @@ def go_next(num_files: int, file_names: list[str]) -> None:
 
     st.session_state["file_index"] = new_index
     st.session_state["selected_file_name"] = file_names[new_index]
+
+def _round2(value: Any) -> str:
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
 
 # ---------------------------------------------------------------------------
 # Streamlit app
@@ -560,10 +589,16 @@ def main() -> None:
         elif not features:
             st.warning("No selected features found in this CAS.")
 
-        else:
-            for feature_name, feature_value in features.items():
-                st.markdown(f"- **{feature_name}**: `{feature_value}`")
 
+        else:
+            features_df = pd.DataFrame(
+                {
+                    "Feature": list(features.keys()),
+                    "Value": [_round2(v) for v in features.values()],
+                    "Expected": [round(0, 2) for _ in features]
+                }
+            )
+            st.table(features_df)
 
 if __name__ == "__main__":
     main()

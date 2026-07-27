@@ -166,7 +166,7 @@ CORPUS_MAP: Dict[str, Path] = {
     "Leiko_EASY": Leiko_EASY,
 }
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compute subjunctive proportions and write matching sentences to a file."
     )
@@ -192,4 +192,7 @@ if __name__ == "__main__":
         # Process all corpora, then plot.
         results = {name: process_folder(path) for name, path in CORPUS_MAP.items()}
         plot_subjunctive_proportions(results)
-    
+
+
+if __name__ == "__main__":
+    main()

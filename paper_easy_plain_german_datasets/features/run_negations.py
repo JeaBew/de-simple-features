@@ -155,7 +155,7 @@ def plot_negation_proportions(results: Dict[str, float]) -> None:
     """
     import matplotlib.pyplot as plt
 
-    # Build a DataFrame that also encodes a categorical colour mapping.
+    # Build a DataFrame that also encodes a categorical color mapping.
     # Use the explicit sum pattern to preserve the insertion order of the
     # ``results`` dictionary (matching the style used in other plotting scripts).
     df = pd.DataFrame({
