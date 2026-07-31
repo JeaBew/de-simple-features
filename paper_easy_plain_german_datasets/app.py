@@ -11,6 +11,8 @@ import textwrap
 
 from py_lift.extractors import FE_AverageTokenLength, FE_TokenCount
 
+from features.run_synonyms import check_text as check_synonym_consistency
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -39,7 +41,7 @@ DEFAULT_FEATURE_VIEW = "_InitialView"
 # Only features listed here are computed from another view.
 # All other features use DEFAULT_FEATURE_VIEW.
 FEATURE_VIEW_OVERRIDES = {
-    #"Token_length_mean": "NormalizedView",
+    # "Token_length_mean": "NormalizedView",
     # "Token_COUNT": "NormalizedView",
 }
 
@@ -49,6 +51,7 @@ FEATURE_EXTRACTORS: dict[str, Any] = {
     "Token_COUNT": FE_TokenCount(),
 }
 
+
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
@@ -57,10 +60,11 @@ def get_view_name_for_feature(feature_name: str) -> str:
     """Return the view that should be used for a given feature."""
     return FEATURE_VIEW_OVERRIDES.get(feature_name, DEFAULT_FEATURE_VIEW)
 
+
 def render_token_alignment_html(
-    alignment_rows: list[dict[str, Any]],
-    *,
-    show_only_changed: bool = False,
+        alignment_rows: list[dict[str, Any]],
+        *,
+        show_only_changed: bool = False,
 ) -> str:
     """Render token alignment as horizontally readable HTML.
 
@@ -117,7 +121,7 @@ def render_token_alignment_html(
     justify-content: center;
     min-width: 3rem;
     padding: 0.35rem 0.5rem;
-    
+
     border: 1px solid #dddddd;
     border-radius: 0.5rem;
     background-color: #f8f9fa;
@@ -159,6 +163,8 @@ def render_token_alignment_html(
     full_html = style + '<div class="alignment-container">' + cards_html + '</div>'
 
     return full_html
+
+
 def get_view_or_default(cas: Any, view_name: str) -> Any:
     """Return a CAS view. Fall back to the CAS itself for _InitialView."""
     try:
@@ -170,9 +176,9 @@ def get_view_or_default(cas: Any, view_name: str) -> Any:
 
 
 def extract_tokens_from_view(
-    cas: Any,
-    view_name: str,
-    token_type_name: str = TOKEN_TYPE_NAME,
+        cas: Any,
+        view_name: str,
+        token_type_name: str = TOKEN_TYPE_NAME,
 ) -> list[dict[str, Any]]:
     """Extract token texts and offsets from a CAS view."""
     view = get_view_or_default(cas, view_name)
@@ -218,8 +224,8 @@ def load_token_alignment_data(xmi_path_str: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
 
     for index, (initial_token, normalized_token) in enumerate(
-        zip_longest(initial_tokens, normalized_tokens),
-        start=1,
+            zip_longest(initial_tokens, normalized_tokens),
+            start=1,
     ):
         initial_text = initial_token["text"] if initial_token is not None else ""
         normalized_text = normalized_token["text"] if normalized_token is not None else ""
@@ -249,6 +255,7 @@ def highlight_changed_tokens(row: pd.Series) -> list[str]:
         ]
 
     return ["" for _ in row]
+
 
 def get_corpus_dirs(base_dir: Path) -> list[Path]:
     """Return all corpus directories inside cache/normalized."""
@@ -306,10 +313,11 @@ def compute_selected_features_from_cas(cas: Any) -> dict[str, str]:
 
     return features
 
+
 @st.cache_data(show_spinner=False)
 def load_cas_display_data(
-    xmi_path_str: str,
-    view_name: str = DEFAULT_VIEW_NAME,
+        xmi_path_str: str,
+        view_name: str = DEFAULT_VIEW_NAME,
 ) -> dict[str, Any]:
     """Load a CAS from XMI and return display data.
 
@@ -368,11 +376,35 @@ def go_next(num_files: int, file_names: list[str]) -> None:
     st.session_state["file_index"] = new_index
     st.session_state["selected_file_name"] = file_names[new_index]
 
+
 def _round2(value: Any) -> str:
     try:
         return f"{float(value):.2f}"
     except (TypeError, ValueError):
         return str(value)
+
+
+@st.cache_data(show_spinner=False)
+def load_synonym_report(
+    sofa_string: str,
+    use_thesaurus: bool = True,
+    use_embeddings: bool = True,
+    use_bert: bool = True,
+    similarity_threshold: float = 0.75,
+    bert_similarity_threshold: float = 0.82,
+) -> dict:
+    if not sofa_string:
+        return {"candidates": []}
+
+    return check_synonym_consistency(
+        sofa_string,
+        use_thesaurus=use_thesaurus,
+        use_embeddings=use_embeddings,
+        use_bert=use_bert,
+        similarity_threshold=similarity_threshold,
+        bert_similarity_threshold=bert_similarity_threshold,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Streamlit app
@@ -444,15 +476,15 @@ def main() -> None:
 
     # Initialize selected_file_name if necessary.
     if (
-        "selected_file_name" not in st.session_state
-        or st.session_state["selected_file_name"] not in file_names
+            "selected_file_name" not in st.session_state
+            or st.session_state["selected_file_name"] not in file_names
     ):
         st.session_state["selected_file_name"] = file_names[st.session_state["file_index"]]
 
     # Initialize view selection if necessary.
     if (
-        "view_name" not in st.session_state
-        or st.session_state["view_name"] not in AVAILABLE_VIEWS
+            "view_name" not in st.session_state
+            or st.session_state["view_name"] not in AVAILABLE_VIEWS
     ):
         st.session_state["view_name"] = DEFAULT_VIEW_NAME
 
@@ -533,6 +565,16 @@ def main() -> None:
     sofa_string = display_data["sofa_string"]
     features = display_data["features"]
 
+    with st.spinner("Checking noun consistency including BERT..."):
+        synonym_report = load_synonym_report(
+            sofa_string,
+            use_thesaurus=True,
+            use_embeddings=True,
+            use_bert=True,
+            similarity_threshold=0.75,
+            bert_similarity_threshold=0.82,
+        )
+
     # -----------------------------------------------------------------------
     # Main content: left column = text, right column = features
     # -----------------------------------------------------------------------
@@ -583,22 +625,86 @@ def main() -> None:
     with right_col:
         st.subheader("Features")
 
+        word_tab, sentence_tab = st.tabs(["Word", "Sentence"])
+
         if not FEATURE_NAMES_TO_SHOW:
-            st.info("No features selected yet.")
-
+            with word_tab:
+                st.info("No features selected yet.")
+            with sentence_tab:
+                st.info("No features selected yet.")
         elif not features:
-            st.warning("No selected features found in this CAS.")
-
-
+            with word_tab:
+                st.warning("No selected features found in this CAS.")
+            with sentence_tab:
+                st.warning("No selected features found in this CAS.")
         else:
-            features_df = pd.DataFrame(
-                {
-                    "Feature": list(features.keys()),
-                    "Value": [_round2(v) for v in features.values()],
-                    "Expected": [round(0, 2) for _ in features]
-                }
-            )
-            st.table(features_df)
+            with word_tab:
+                if "Token_length_mean" in features:
+                    with st.expander("Token length (mean)"):
+                        value = features["Token_length_mean"]
+                        st.table(
+                            pd.DataFrame(
+                                {
+                                    "Feature": ["Token_length_mean"],
+                                    "Value": [_round2(value)],
+                                    "Expected": [round(0, 2)],
+                                }
+                            )
+                        )
+
+                if "Token_COUNT" in features:
+                    with st.expander("Token count"):
+                        value = features["Token_COUNT"]
+                        st.table(
+                            pd.DataFrame(
+                                {
+                                    "Feature": ["Token_COUNT"],
+                                    "Value": [_round2(value)],
+                                    "Expected": [round(0, 2)],
+                                }
+                            )
+                        )
+
+                with st.expander("Synonyme"):
+                    candidates = synonym_report["candidates"]
+
+                    if not candidates:
+                        st.write("Keine möglichen Synonym-Inkonsistenzen gefunden.")
+                    else:
+                        candidates_df = pd.DataFrame(
+                            {
+                                "Nomen A": [c.lemma_a for c in candidates],
+                                "Nomen B": [c.lemma_b for c in candidates],
+                                "Quelle": [c.source for c in candidates],
+                                "Gesamt-Ähnlichkeit": [
+                                    round(c.similarity, 2) if getattr(c, "similarity", None) is not None else None
+                                    for c in candidates
+                                ],
+                                "spaCy-Ähnlichkeit": [
+                                    round(getattr(c, "spacy_similarity", None), 2)
+                                    if getattr(c, "spacy_similarity", None) is not None
+                                    else None
+                                    for c in candidates
+                                ],
+                                "BERT-Ähnlichkeit": [
+                                    round(getattr(c, "bert_similarity", None), 2)
+                                    if getattr(c, "bert_similarity", None) is not None
+                                    else None
+                                    for c in candidates
+                                ],
+                            }
+                        )
+
+                        st.table(candidates_df)
+
+            with sentence_tab:
+                # Hier später deine Sentence-Features analog ergänzen, z.B.:
+                # if "Some_Sentence_Feature" in features:
+                #     with st.expander("Beschreibung"):
+                #         value = features["Some_Sentence_Feature"]
+                #         st.write(f"Wert: {_round2(value)}")
+                st.info("No sentence-level features found in this CAS.")
+
 
 if __name__ == "__main__":
     main()

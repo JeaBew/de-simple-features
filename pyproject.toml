@@ -18,7 +18,11 @@ dependencies = [
     "jupyter (>=1.0.0,<2.0.0)",
     "ipykernel (>=6.29.0,<7.0.0)",
     "streamlit (>=1.59.2,<2.0.0)",
-    "pandas-stubs (>=2.3.3,<2.4.0)"
+    "pandas-stubs (>=2.3.3,<2.4.0)",
+    "spacy (>=3.8.14,<4.0.0)",
+    "requests (>=2.34.2,<3.0.0)",
+    "torch (>=2.13.0,<3.0.0)",
+    "transformers (>=4.48.1,<5.0.0)"
 ]
 
 
