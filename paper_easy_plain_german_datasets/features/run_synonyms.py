@@ -10,6 +10,17 @@ Kombiniert drei Signale:
   2. spaCy-Word-Embeddings
   3. BERT-Kontextvektoren
 
+Zwei Wege, um an die Nomen zu kommen:
+  - extract_nouns(text)          -> verarbeitet Rohtext neu mit spaCy
+                                     (v.a. für Standalone-Tests ohne CAS)
+  - extract_nouns_from_cas(cas)  -> liest Token/POS/Lemma direkt aus
+                                     bereits vorhandenen CAS-Annotationen
+                                     (empfohlen, wenn die Pipeline das
+                                     schon berechnet hat)
+
+check_text() und check_cas() sind die beiden passenden Einstiegspunkte,
+die beide auf derselben find_synonym_candidates()-Logik aufsetzen.
+
 Voraussetzungen:
     pip install spacy requests torch transformers
     python -m spacy download de_core_news_lg
@@ -17,9 +28,11 @@ Voraussetzungen:
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 from dataclasses import dataclass, field
+from typing import Any
 
 import requests
 import spacy
@@ -40,6 +53,40 @@ DEFAULT_BERT_MODEL = "bert-base-german-cased"
 # Alternativen:
 # DEFAULT_BERT_MODEL = "deepset/gbert-base"
 # DEFAULT_BERT_MODEL = "dbmdz/bert-base-german-cased"
+
+# ---------------------------------------------------------------------------
+# CAS-Konfiguration
+#
+# ACHTUNG: Diese Typ-/Feature-Namen sind Standard-DKPro-Core-Konventionen,
+# aber ich kenne euer tatsächliches Typsystem nicht sicher. Bitte vor dem
+# ersten produktiven Lauf gegenchecken (siehe Hinweis im Chat) und ggf.
+# anpassen.
+# ---------------------------------------------------------------------------
+
+DEFAULT_POS_TYPE_NAME = "de.tudarmstadt.ukp.dkpro.core.api.lexmorph.type.pos.POS"
+DEFAULT_LEMMA_TYPE_NAME = "de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Lemma"
+DEFAULT_SENTENCE_TYPE_NAME = "de.tudarmstadt.ukp.dkpro.core.api.segmentation.type.Sentence"
+
+# Welche POS-Werte als "Nomen" zählen - ggf. "NE" (Eigennamen) rausnehmen,
+# falls Eigennamen hier nicht mitgezählt werden sollen.
+NOUN_POS_VALUES = {"NN", "NOUN", "NE"}
+ABBREVIATION_MAP: dict[str, set[str]] = {
+    "EU": {"Europäische Union"},
+    "NRW": {"Nordrhein-Westfalen"},
+    "z. B.": {"zum Beispiel"},
+    "bzw.": {"beziehungsweise"},
+    "Uni": {"Universität", "Hochschule"},
+    "Info": {"Information"},
+    "Kita": {"Kindertagesstätte"},
+    "FernUni": {"FernUniversität in Hagen", "FernUniversität"},
+}
+LONG_SHORT_PATTERN = re.compile(
+    r"(?P<long>\b[A-ZÄÖÜ][^().]{3,80}?)\s*$(?P<short>[A-Za-zÄÖÜäöüß0-9.\-]{2,20})$"
+)
+
+SHORT_LONG_PATTERN = re.compile(
+    r"\b(?P<short>[A-ZÄÖÜ]{2,15})\s*$(?P<long>[A-ZÄÖÜ][^().]{3,80}?)$"
+)
 
 
 @dataclass
@@ -87,6 +134,21 @@ class SynonymCandidate:
         info = ", ".join(parts)
         return f"'{self.lemma_a}' <-> '{self.lemma_b}'  [{info}]"
 
+@dataclass
+class AbbreviationCandidate:
+    short_form: str
+    long_form: str
+    source: str
+    confidence: float = 0.95
+    start_char: int | None = None
+    end_char: int | None = None
+
+    def __str__(self) -> str:
+        return (
+            f"'{self.short_form}' <-> '{self.long_form}' "
+            f"[{self.source}, Konfidenz={self.confidence:.2f}]"
+        )
+
 
 _nlp = None
 _bert_tokenizer = None
@@ -126,7 +188,12 @@ def get_bert(model_name: str = DEFAULT_BERT_MODEL):
 
 
 def extract_nouns(text: str) -> dict[str, NounOccurrence]:
-    """Extrahiert alle Nomen mit Lemma, Formen und Kontextinformationen."""
+    """Extrahiert alle Nomen mit Lemma, Formen und Kontextinformationen.
+
+    Verarbeitet den Rohtext neu mit spaCy - gedacht für Standalone-Tests
+    ohne CAS (z.B. das __main__-Beispiel unten). Für den produktiven
+    Einsatz mit eurer CAS-Pipeline lieber extract_nouns_from_cas nutzen.
+    """
     nlp = get_nlp()
     doc = nlp(text)
     occurrences: dict[str, NounOccurrence] = {}
@@ -159,6 +226,185 @@ def extract_nouns(text: str) -> dict[str, NounOccurrence]:
 
     return occurrences
 
+
+def extract_nouns_from_cas(
+    cas: Any,
+    view_name: str = "_InitialView",
+    pos_type_name: str = DEFAULT_POS_TYPE_NAME,
+    lemma_type_name: str = DEFAULT_LEMMA_TYPE_NAME,
+    sentence_type_name: str = DEFAULT_SENTENCE_TYPE_NAME,
+    noun_pos_values: set[str] = NOUN_POS_VALUES,
+) -> dict[str, NounOccurrence]:
+    """Extrahiert Nomen direkt aus bereits vorhandenen CAS-Annotationen.
+
+    POS- und Lemma-Annotationen liegen in eurer CAS als eigene Ebenen auf
+    demselben Span (begin/end) - nicht als Features direkt am Token. Diese
+    Funktion sammelt daher zuerst alle Lemma-Annotationen in einem
+    Span->Lemma-Lookup und matcht dann jede POS-Annotation mit
+    PosValue == Nomen über exakt denselben Span.
+
+    Für die BERT-Kontextvektoren werden zusätzlich Satzgrenzen
+    (Sentence-Annotation) benötigt, um jedem Nomen-Vorkommen seinen
+    umgebenden Satz zuzuordnen.
+
+    WICHTIG: pos_type_name/lemma_type_name/sentence_type_name gehen von
+    Standard-DKPro-Core-Konventionen aus. Bitte anhand der Namespace-URIs
+    im XMI-Header (xmlns:pos=..., xmlns:type=...) gegenchecken, ob das zu
+    eurem Typsystem passt, und bei Bedarf anpassen.
+    """
+    try:
+        view = cas.get_view(view_name)
+    except Exception:
+        view = cas
+
+    sofa_string = getattr(view, "sofa_string", None) or ""
+
+    pos_annotations = sorted(view.select(pos_type_name), key=lambda a: (a.begin, a.end))
+    lemma_annotations = list(view.select(lemma_type_name))
+    sentences = sorted(view.select(sentence_type_name), key=lambda s: (s.begin, s.end))
+
+    # Span -> Lemma-Wert, damit wir nicht pro Nomen erneut alle
+    # Lemma-Annotationen durchsuchen müssen.
+    lemma_by_span: dict[tuple[int, int], str] = {
+        (int(lemma_ann.begin), int(lemma_ann.end)): lemma_ann.value
+        for lemma_ann in lemma_annotations
+    }
+
+    def sentence_span_for(begin: int, end: int) -> tuple[str, int]:
+        """Findet den Satz, der eine Annotation enthält -> (Satztext, Satzanfang).
+
+        Lineare Suche über die Satzliste; für die üblichen Textlängen in
+        Leichte-Sprache-Dokumenten unkritisch.
+        """
+        for sent in sentences:
+            sent_begin, sent_end = int(sent.begin), int(sent.end)
+            if sent_begin <= begin and end <= sent_end:
+                return sofa_string[sent_begin:sent_end], sent_begin
+        # Fallback, falls kein passender Satz gefunden wird (z.B. fehlende
+        # Sentence-Annotation): Wort selbst als "Satz" behandeln.
+        return sofa_string[begin:end], begin
+
+    occurrences: dict[str, NounOccurrence] = {}
+
+    for pos_ann in pos_annotations:
+        pos_value = getattr(pos_ann, "PosValue", None)
+        if pos_value not in noun_pos_values:
+            continue
+
+        begin, end = int(pos_ann.begin), int(pos_ann.end)
+        surface = sofa_string[begin:end]
+        lemma = lemma_by_span.get((begin, end), surface)
+
+        sentence_text, sent_start = sentence_span_for(begin, end)
+        local_start = begin - sent_start
+        local_end = local_start + len(surface)
+
+        occ = occurrences.setdefault(lemma, NounOccurrence(lemma=lemma))
+        occ.surface_forms.add(surface)
+        occ.count += 1
+        occ.contexts.append(
+            NounContext(
+                sentence_text=sentence_text,
+                start_char=local_start,
+                end_char=local_end,
+                surface=surface,
+            )
+        )
+
+    return occurrences
+
+
+def detect_abbreviations(
+    text: str,
+    abbreviation_map: dict[str, set[str]] = ABBREVIATION_MAP,
+) -> list[AbbreviationCandidate]:
+    """Erkennt einfache Abkürzungsrelationen im Text.
+
+    Erkennt:
+    - Langform (Kurzform), z.B. Europäische Union (EU)
+    - Kurzform (Langform), z.B. EU (Europäische Union)
+    - bekannte Paare aus ABBREVIATION_MAP
+    """
+    candidates: list[AbbreviationCandidate] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add_candidate(
+        short_form: str,
+        long_form: str,
+        source: str,
+        confidence: float,
+        start_char: int | None = None,
+        end_char: int | None = None,
+    ) -> None:
+        short_form_clean = short_form.strip()
+        long_form_clean = long_form.strip()
+
+        if not short_form_clean or not long_form_clean:
+            return
+
+        key = (short_form_clean, long_form_clean, source)
+
+        if key in seen:
+            return
+
+        seen.add(key)
+
+        candidates.append(
+            AbbreviationCandidate(
+                short_form=short_form_clean,
+                long_form=long_form_clean,
+                source=source,
+                confidence=confidence,
+                start_char=start_char,
+                end_char=end_char,
+            )
+        )
+
+    # Fall 1: Langform (Kurzform)
+    # Beispiel: Europäische Union (EU)
+    for match in LONG_SHORT_PATTERN.finditer(text):
+        long_form = match.group("long")
+        short_form = match.group("short")
+
+        add_candidate(
+            short_form=short_form,
+            long_form=long_form,
+            source="regex:long(short)",
+            confidence=0.98,
+            start_char=match.start(),
+            end_char=match.end(),
+        )
+
+    # Fall 2: Kurzform (Langform)
+    # Beispiel: EU (Europäische Union)
+    for match in SHORT_LONG_PATTERN.finditer(text):
+        short_form = match.group("short")
+        long_form = match.group("long")
+
+        add_candidate(
+            short_form=short_form,
+            long_form=long_form,
+            source="regex:short(long)",
+            confidence=0.98,
+            start_char=match.start(),
+            end_char=match.end(),
+        )
+
+    # Fall 3: bekannte Abkürzungen aus Liste
+    for short_form, long_forms in abbreviation_map.items():
+        if short_form not in text:
+            continue
+
+        for long_form in long_forms:
+            if long_form in text:
+                add_candidate(
+                    short_form=short_form,
+                    long_form=long_form,
+                    source="abbreviation_map",
+                    confidence=0.90,
+                )
+
+    return candidates
 
 def get_synonyms_openthesaurus(word: str, timeout: float = 5.0) -> set[str]:
     """Fragt OpenThesaurus nach Synonymen eines Wortes ab."""
@@ -295,7 +541,12 @@ def find_synonym_candidates(
     bert_similarity_threshold: float = BERT_SIMILARITY_THRESHOLD,
     bert_model_name: str = DEFAULT_BERT_MODEL,
 ) -> list[SynonymCandidate]:
-    """Prüft alle Nomen-Paare auf mögliche Synonymie."""
+    """Prüft alle Nomen-Paare auf mögliche Synonymie.
+
+    Arbeitet ausschließlich auf dem NounOccurrence-Dict - unabhängig davon,
+    ob es über extract_nouns (Rohtext) oder extract_nouns_from_cas (CAS)
+    erzeugt wurde.
+    """
     nlp = get_nlp()
     lemmas = list(nouns.keys())
     candidates: list[SynonymCandidate] = []
@@ -384,7 +635,7 @@ def check_text(
     bert_similarity_threshold: float = BERT_SIMILARITY_THRESHOLD,
     bert_model_name: str = DEFAULT_BERT_MODEL,
 ) -> dict:
-    """Führt die vollständige Prüfung durch und gibt einen Report als dict zurück."""
+    """Führt die vollständige Prüfung auf einem rohen Text-String durch."""
     nouns = extract_nouns(text)
 
     candidates = find_synonym_candidates(
@@ -397,11 +648,66 @@ def check_text(
         bert_model_name=bert_model_name,
     )
 
+    abbreviations = detect_abbreviations(text)
+
     return {
         "nouns": nouns,
         "candidates": candidates,
+        "abbreviations": abbreviations,
         "num_nouns": len(nouns),
         "num_candidates": len(candidates),
+        "num_abbreviations": len(abbreviations),
+    }
+
+def check_cas(
+    cas: Any,
+    view_name: str = "_InitialView",
+    pos_type_name: str = DEFAULT_POS_TYPE_NAME,
+    lemma_type_name: str = DEFAULT_LEMMA_TYPE_NAME,
+    sentence_type_name: str = DEFAULT_SENTENCE_TYPE_NAME,
+    use_thesaurus: bool = True,
+    use_embeddings: bool = True,
+    use_bert: bool = False,
+    similarity_threshold: float = SIMILARITY_THRESHOLD,
+    bert_similarity_threshold: float = BERT_SIMILARITY_THRESHOLD,
+    bert_model_name: str = DEFAULT_BERT_MODEL,
+) -> dict:
+    """Führt die vollständige Prüfung direkt auf einer CAS durch."""
+
+    try:
+        view = cas.get_view(view_name)
+    except Exception:
+        view = cas
+
+    sofa_string = getattr(view, "sofa_string", None) or ""
+
+    nouns = extract_nouns_from_cas(
+        cas,
+        view_name=view_name,
+        pos_type_name=pos_type_name,
+        lemma_type_name=lemma_type_name,
+        sentence_type_name=sentence_type_name,
+    )
+
+    candidates = find_synonym_candidates(
+        nouns,
+        use_thesaurus=use_thesaurus,
+        use_embeddings=use_embeddings,
+        use_bert=use_bert,
+        similarity_threshold=similarity_threshold,
+        bert_similarity_threshold=bert_similarity_threshold,
+        bert_model_name=bert_model_name,
+    )
+
+    abbreviations = detect_abbreviations(sofa_string)
+
+    return {
+        "nouns": nouns,
+        "candidates": candidates,
+        "abbreviations": abbreviations,
+        "num_nouns": len(nouns),
+        "num_candidates": len(candidates),
+        "num_abbreviations": len(abbreviations),
     }
 
 
@@ -424,26 +730,31 @@ def print_report(report: dict) -> None:
         print(f"   '{cand.lemma_b}': {occ_b.count}x, Formen: {occ_b.surface_forms}")
         print()
 
+    abbreviations = report.get("abbreviations", [])
+
+    if abbreviations:
+        print("\nGefundene Abkürzungen:")
+        print("-" * 60)
+
+        for abbr in abbreviations:
+            print(f"ℹ  {abbr}")
+
+
+
 
 if __name__ == "__main__":
     text = (
-        "Maria kauft ein neues Fahrrad. "
-        "Das Rad hat sieben Gänge. "
-        "Sie fährt jeden Tag mit dem Zweirad zur Arbeit. "
-        "Der Wagen von Maria steht in der Garage. "
-        "Das Auto ist blau. "
-        "Sie nutzt den Wagen nur am Wochenende. "
-        "Ihr Hund heißt Bello. "
-        "Der Vierbeiner liebt lange Spaziergänge. "
-        "Am Sonntag geht sie mit dem Hund in den Park."
+        "Die Europäische Union (EU) macht Regeln. "
+        "Die EU hat viele Mitgliedstaaten. "
+        "Maria studiert an der FernUniversität in Hagen. "
+        "Viele Menschen sagen auch FernUni."
     )
 
     report = check_text(
         text,
-        use_thesaurus=True,
-        use_embeddings=True,
-        use_bert=True,
-        bert_similarity_threshold=0.82,
+        use_thesaurus=False,
+        use_embeddings=False,
+        use_bert=False,
     )
 
     print_report(report)

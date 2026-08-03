@@ -696,6 +696,22 @@ def main() -> None:
                         )
 
                         st.table(candidates_df)
+                with st.expander("Abkürzungen"):
+                    abbreviations = synonym_report.get("abbreviations", [])
+
+                    if not abbreviations:
+                        st.write("Keine Abkürzungen gefunden.")
+                    else:
+                        abbreviations_df = pd.DataFrame(
+                            {
+                                "Kurzform": [a.short_form for a in abbreviations],
+                                "Langform": [a.long_form for a in abbreviations],
+                                "Quelle": [a.source for a in abbreviations],
+                                "Konfidenz": [round(a.confidence, 2) for a in abbreviations],
+                            }
+                        )
+
+                        st.table(abbreviations_df)
 
             with sentence_tab:
                 # Hier später deine Sentence-Features analog ergänzen, z.B.:
