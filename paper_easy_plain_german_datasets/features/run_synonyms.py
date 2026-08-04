@@ -13,8 +13,8 @@ Kombiniert drei Signale:
 Zwei Wege, um an die Nomen zu kommen:
   - extract_nouns(text)          -> verarbeitet Rohtext neu mit spaCy
                                      (v.a. für Standalone-Tests ohne CAS)
-  - extract_nouns_from_cas(cas)  -> liest Token/POS/Lemma direkt aus
-                                     bereits vorhandenen CAS-Annotationen
+  - extract_nouns_from_cas(cas)  -> liest POS/Lemma direkt aus bereits
+                                     vorhandenen CAS-Annotationen
                                      (empfohlen, wenn die Pipeline das
                                      schon berechnet hat)
 
@@ -59,8 +59,7 @@ DEFAULT_BERT_MODEL = "bert-base-german-cased"
 #
 # ACHTUNG: Diese Typ-/Feature-Namen sind Standard-DKPro-Core-Konventionen,
 # aber ich kenne euer tatsächliches Typsystem nicht sicher. Bitte vor dem
-# ersten produktiven Lauf gegenchecken (siehe Hinweis im Chat) und ggf.
-# anpassen.
+# ersten produktiven Lauf gegenchecken und ggf. anpassen.
 # ---------------------------------------------------------------------------
 
 DEFAULT_POS_TYPE_NAME = "de.tudarmstadt.ukp.dkpro.core.api.lexmorph.type.pos.POS"
@@ -70,6 +69,7 @@ DEFAULT_SENTENCE_TYPE_NAME = "de.tudarmstadt.ukp.dkpro.core.api.segmentation.typ
 # Welche POS-Werte als "Nomen" zählen - ggf. "NE" (Eigennamen) rausnehmen,
 # falls Eigennamen hier nicht mitgezählt werden sollen.
 NOUN_POS_VALUES = {"NN", "NOUN", "NE"}
+
 ABBREVIATION_MAP: dict[str, set[str]] = {
     "EU": {"Europäische Union"},
     "NRW": {"Nordrhein-Westfalen"},
@@ -80,13 +80,37 @@ ABBREVIATION_MAP: dict[str, set[str]] = {
     "Kita": {"Kindertagesstätte"},
     "FernUni": {"FernUniversität in Hagen", "FernUniversität"},
 }
+
+# WICHTIG: Hier stand vorher "$" statt "\(" / "\)" - "$" ist der Regex-Anker
+# für Stringende, keine escapte Klammer. Dadurch konnte das Pattern nie
+# matchen (ein String hat nur ein Ende), egal welcher Text reinkam. Fix:
+# echte, escapte Klammern verwenden.
 LONG_SHORT_PATTERN = re.compile(
-    r"(?P<long>\b[A-ZÄÖÜ][^().]{3,80}?)\s*$(?P<short>[A-Za-zÄÖÜäöüß0-9.\-]{2,20})$"
+    r"(?P<long>\b[A-ZÄÖÜ][^().]{3,80}?)\s*\((?P<short>[A-Za-zÄÖÜäöüß0-9.\-]{2,20})\)"
 )
 
 SHORT_LONG_PATTERN = re.compile(
-    r"\b(?P<short>[A-ZÄÖÜ]{2,15})\s*$(?P<long>[A-ZÄÖÜ][^().]{3,80}?)$"
+    r"\b(?P<short>[A-ZÄÖÜ]{2,15})\s*\((?P<long>[A-ZÄÖÜ][^().]{3,80}?)\)"
 )
+
+# Fall 4: alleinstehende Großbuchstaben-Akronyme ohne Klammer-Definition im Text
+# (z.B. Parteikürzel wie "SPD", "CDU"). Liefert keine Langform - dient nur als
+# Kandidat zur weiteren Prüfung/Evaluation. Bewusst grob (reine Großschreibungs-
+# Heuristik) - erwartbare Fehlalarme: Ländercodes, römische Zahlen (I, IV, ...),
+# sonstige komplett großgeschriebene Wörter (z.B. Überschriften/Hervorhebungen).
+STANDALONE_ACRONYM_PATTERN = re.compile(r"\b[A-ZÄÖÜ]{2,5}\b")
+
+# Fall 5: einzelne Buchstaben als Einheiten-Abkürzung (z.B. "s" für Sekunde,
+# "m" für Meter). Im Deutschen gibt es kaum echte einzelne Buchstaben als
+# eigenständige Wörter, daher relativ präzise - aber Aufzählungsmarker wie
+# "a)"/"b)" können mit reinrutschen.
+SINGLE_LETTER_PATTERN = re.compile(r"\b[a-zA-ZÄÖÜäöüß]\b")
+
+# Fall 6: gemischte Groß-/Kleinschreibung wie "kW" (Kilowatt), "kWh", "mAh".
+# Erkennt mindestens einen Kleinbuchstaben, gefolgt von einem Großbuchstaben,
+# irgendwo im selben Wort. Achtung: erkennt auch CamelCase-Markennamen wie
+# "iPhone" als Fehlalarm.
+MIXED_CASE_PATTERN = re.compile(r"\b[a-zäöüß]+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß]*\b")
 
 
 @dataclass
@@ -134,18 +158,24 @@ class SynonymCandidate:
         info = ", ".join(parts)
         return f"'{self.lemma_a}' <-> '{self.lemma_b}'  [{info}]"
 
+
 @dataclass
 class AbbreviationCandidate:
     short_form: str
-    long_form: str
+    long_form: str | None
     source: str
     confidence: float = 0.95
     start_char: int | None = None
     end_char: int | None = None
 
     def __str__(self) -> str:
+        if self.long_form:
+            return (
+                f"'{self.short_form}' <-> '{self.long_form}' "
+                f"[{self.source}, Konfidenz={self.confidence:.2f}]"
+            )
         return (
-            f"'{self.short_form}' <-> '{self.long_form}' "
+            f"'{self.short_form}' (keine Auflösung im Text gefunden) "
             f"[{self.source}, Konfidenz={self.confidence:.2f}]"
         )
 
@@ -191,8 +221,8 @@ def extract_nouns(text: str) -> dict[str, NounOccurrence]:
     """Extrahiert alle Nomen mit Lemma, Formen und Kontextinformationen.
 
     Verarbeitet den Rohtext neu mit spaCy - gedacht für Standalone-Tests
-    ohne CAS (z.B. das __main__-Beispiel unten). Für den produktiven
-    Einsatz mit eurer CAS-Pipeline lieber extract_nouns_from_cas nutzen.
+    ohne CAS. Für den produktiven Einsatz mit eurer CAS-Pipeline lieber
+    extract_nouns_from_cas nutzen.
     """
     nlp = get_nlp()
     doc = nlp(text)
@@ -246,11 +276,6 @@ def extract_nouns_from_cas(
     Für die BERT-Kontextvektoren werden zusätzlich Satzgrenzen
     (Sentence-Annotation) benötigt, um jedem Nomen-Vorkommen seinen
     umgebenden Satz zuzuordnen.
-
-    WICHTIG: pos_type_name/lemma_type_name/sentence_type_name gehen von
-    Standard-DKPro-Core-Konventionen aus. Bitte anhand der Namespace-URIs
-    im XMI-Header (xmlns:pos=..., xmlns:type=...) gegenchecken, ob das zu
-    eurem Typsystem passt, und bei Bedarf anpassen.
     """
     try:
         view = cas.get_view(view_name)
@@ -263,25 +288,16 @@ def extract_nouns_from_cas(
     lemma_annotations = list(view.select(lemma_type_name))
     sentences = sorted(view.select(sentence_type_name), key=lambda s: (s.begin, s.end))
 
-    # Span -> Lemma-Wert, damit wir nicht pro Nomen erneut alle
-    # Lemma-Annotationen durchsuchen müssen.
     lemma_by_span: dict[tuple[int, int], str] = {
         (int(lemma_ann.begin), int(lemma_ann.end)): lemma_ann.value
         for lemma_ann in lemma_annotations
     }
 
     def sentence_span_for(begin: int, end: int) -> tuple[str, int]:
-        """Findet den Satz, der eine Annotation enthält -> (Satztext, Satzanfang).
-
-        Lineare Suche über die Satzliste; für die üblichen Textlängen in
-        Leichte-Sprache-Dokumenten unkritisch.
-        """
         for sent in sentences:
             sent_begin, sent_end = int(sent.begin), int(sent.end)
             if sent_begin <= begin and end <= sent_end:
                 return sofa_string[sent_begin:sent_end], sent_begin
-        # Fallback, falls kein passender Satz gefunden wird (z.B. fehlende
-        # Sentence-Annotation): Wort selbst als "Satz" behandeln.
         return sofa_string[begin:end], begin
 
     occurrences: dict[str, NounOccurrence] = {}
@@ -330,19 +346,25 @@ def detect_abbreviations(
 
     def add_candidate(
         short_form: str,
-        long_form: str,
+        long_form: str | None,
         source: str,
         confidence: float,
         start_char: int | None = None,
         end_char: int | None = None,
     ) -> None:
         short_form_clean = short_form.strip()
-        long_form_clean = long_form.strip()
+        long_form_clean = long_form.strip() if long_form else None
 
-        if not short_form_clean or not long_form_clean:
+        if not short_form_clean:
+            return
+        # Für alle Quellen außer der Standalone-Erkennung ist eine leere
+        # Langform ein Fehlerfall (die anderen Muster sollen ja gerade Paare
+        # liefern) - beim Standalone-Fall ist "keine Langform gefunden" der
+        # Punkt der Übung.
+        if source != "standalone_acronym" and not long_form_clean:
             return
 
-        key = (short_form_clean, long_form_clean, source)
+        key = (short_form_clean, long_form_clean or "", source)
 
         if key in seen:
             return
@@ -360,8 +382,7 @@ def detect_abbreviations(
             )
         )
 
-    # Fall 1: Langform (Kurzform)
-    # Beispiel: Europäische Union (EU)
+    # Fall 1: Langform (Kurzform), z.B. Europäische Union (EU)
     for match in LONG_SHORT_PATTERN.finditer(text):
         long_form = match.group("long")
         short_form = match.group("short")
@@ -375,8 +396,7 @@ def detect_abbreviations(
             end_char=match.end(),
         )
 
-    # Fall 2: Kurzform (Langform)
-    # Beispiel: EU (Europäische Union)
+    # Fall 2: Kurzform (Langform), z.B. EU (Europäische Union)
     for match in SHORT_LONG_PATTERN.finditer(text):
         short_form = match.group("short")
         long_form = match.group("long")
@@ -404,7 +424,64 @@ def detect_abbreviations(
                     confidence=0.90,
                 )
 
+    # Fall 4: alleinstehende Akronyme ohne erkennbare Auflösung im Text
+    # (z.B. "SPD", "CDU"). Nur melden, wenn dieselbe Kurzform nicht schon
+    # über Fall 1-3 mit einer Langform gefunden wurde - sonst gäbe es
+    # doppelte Einträge für dieselbe Abkürzung.
+    already_resolved = {c.short_form for c in candidates}
+
+    for match in STANDALONE_ACRONYM_PATTERN.finditer(text):
+        short_form = match.group(0)
+
+        if short_form in already_resolved:
+            continue
+
+        add_candidate(
+            short_form=short_form,
+            long_form=None,
+            source="standalone_acronym",
+            confidence=0.5,
+            start_char=match.start(),
+            end_char=match.end(),
+        )
+        already_resolved.add(short_form)
+
+    # Fall 5: einzelne Buchstaben (z.B. Einheiten wie "s", "m", "g")
+    for match in SINGLE_LETTER_PATTERN.finditer(text):
+        short_form = match.group(0)
+
+        if short_form in already_resolved:
+            continue
+
+        add_candidate(
+            short_form=short_form,
+            long_form=None,
+            source="single_letter",
+            confidence=0.3,
+            start_char=match.start(),
+            end_char=match.end(),
+        )
+        already_resolved.add(short_form)
+
+    # Fall 6: gemischte Groß-/Kleinschreibung (z.B. "kW", "kWh", "mAh")
+    for match in MIXED_CASE_PATTERN.finditer(text):
+        short_form = match.group(0)
+
+        if short_form in already_resolved:
+            continue
+
+        add_candidate(
+            short_form=short_form,
+            long_form=None,
+            source="mixed_case",
+            confidence=0.4,
+            start_char=match.start(),
+            end_char=match.end(),
+        )
+        already_resolved.add(short_form)
+
     return candidates
+
 
 def get_synonyms_openthesaurus(word: str, timeout: float = 5.0) -> set[str]:
     """Fragt OpenThesaurus nach Synonymen eines Wortes ab."""
@@ -442,14 +519,7 @@ def bert_context_vector(
     end_char: int,
     model_name: str = DEFAULT_BERT_MODEL,
 ) -> torch.Tensor | None:
-    """
-    Berechnet einen BERT-Kontextvektor für genau ein Nomen im Satz.
-
-    Vorgehen:
-    - Satz tokenisieren
-    - über Offset-Mapping die Subword-Tokens finden, die zum Nomen gehören
-    - letzte BERT-Schicht für diese Subword-Tokens mitteln
-    """
+    """Berechnet einen BERT-Kontextvektor für genau ein Nomen im Satz."""
     tokenizer, model = get_bert(model_name)
 
     encoded = tokenizer(
@@ -471,11 +541,9 @@ def bert_context_vector(
         token_start = int(offset[0])
         token_end = int(offset[1])
 
-        # Spezialtokens wie [CLS], [SEP] haben häufig Offset (0, 0)
         if token_start == token_end == 0:
             continue
 
-        # Überlappung zwischen Token-Span und Nomen-Span
         overlaps = token_end > start_char and token_start < end_char
 
         if overlaps:
@@ -485,8 +553,6 @@ def bert_context_vector(
         return None
 
     vec = hidden[token_indices].mean(dim=0)
-
-    # Normieren, damit Cosine Similarity stabiler ist
     vec = F.normalize(vec, p=2, dim=0)
 
     return vec
@@ -497,12 +563,7 @@ def compute_bert_lemma_vectors(
     model_name: str = DEFAULT_BERT_MODEL,
     max_contexts_per_lemma: int = 8,
 ) -> dict[str, torch.Tensor]:
-    """
-    Berechnet pro Lemma einen durchschnittlichen BERT-Kontextvektor.
-
-    Wenn ein Lemma mehrfach vorkommt, werden mehrere Kontextvektoren gemittelt.
-    max_contexts_per_lemma begrenzt die Laufzeit.
-    """
+    """Berechnet pro Lemma einen durchschnittlichen BERT-Kontextvektor."""
     lemma_vectors: dict[str, torch.Tensor] = {}
 
     for lemma, occ in nouns.items():
@@ -541,12 +602,7 @@ def find_synonym_candidates(
     bert_similarity_threshold: float = BERT_SIMILARITY_THRESHOLD,
     bert_model_name: str = DEFAULT_BERT_MODEL,
 ) -> list[SynonymCandidate]:
-    """Prüft alle Nomen-Paare auf mögliche Synonymie.
-
-    Arbeitet ausschließlich auf dem NounOccurrence-Dict - unabhängig davon,
-    ob es über extract_nouns (Rohtext) oder extract_nouns_from_cas (CAS)
-    erzeugt wurde.
-    """
+    """Prüft alle Nomen-Paare auf mögliche Synonymie."""
     nlp = get_nlp()
     lemmas = list(nouns.keys())
     candidates: list[SynonymCandidate] = []
@@ -607,9 +663,6 @@ def find_synonym_candidates(
 
             if sources:
                 source = "+".join(sources)
-
-                # Für Rückwärtskompatibilität: similarity bevorzugt spaCy,
-                # sonst BERT, sonst None.
                 general_similarity = spacy_sim if spacy_sim is not None else bert_sim
 
                 candidates.append(
@@ -659,6 +712,7 @@ def check_text(
         "num_abbreviations": len(abbreviations),
     }
 
+
 def check_cas(
     cas: Any,
     view_name: str = "_InitialView",
@@ -673,7 +727,6 @@ def check_cas(
     bert_model_name: str = DEFAULT_BERT_MODEL,
 ) -> dict:
     """Führt die vollständige Prüfung direkt auf einer CAS durch."""
-
     try:
         view = cas.get_view(view_name)
     except Exception:
@@ -719,16 +772,15 @@ def print_report(report: dict) -> None:
 
     if not report["candidates"]:
         print("Keine Kandidaten gefunden - Benennung scheint konsistent.")
-        return
+    else:
+        for cand in report["candidates"]:
+            occ_a = report["nouns"][cand.lemma_a]
+            occ_b = report["nouns"][cand.lemma_b]
 
-    for cand in report["candidates"]:
-        occ_a = report["nouns"][cand.lemma_a]
-        occ_b = report["nouns"][cand.lemma_b]
-
-        print(f"⚠  {cand}")
-        print(f"   '{cand.lemma_a}': {occ_a.count}x, Formen: {occ_a.surface_forms}")
-        print(f"   '{cand.lemma_b}': {occ_b.count}x, Formen: {occ_b.surface_forms}")
-        print()
+            print(f"⚠  {cand}")
+            print(f"   '{cand.lemma_a}': {occ_a.count}x, Formen: {occ_a.surface_forms}")
+            print(f"   '{cand.lemma_b}': {occ_b.count}x, Formen: {occ_b.surface_forms}")
+            print()
 
     abbreviations = report.get("abbreviations", [])
 
@@ -740,10 +792,11 @@ def print_report(report: dict) -> None:
             print(f"ℹ  {abbr}")
 
 
-
-
 if __name__ == "__main__":
     text = (
+        "Die Christlich Demokratische Union (CDU) ist eine Partei. "
+        "Die CDU wurde 1945 gegründet. "
+        "Die SPD ist eine andere Partei. "
         "Die Europäische Union (EU) macht Regeln. "
         "Die EU hat viele Mitgliedstaaten. "
         "Maria studiert an der FernUniversität in Hagen. "
