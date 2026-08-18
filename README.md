@@ -1,1 +1,3 @@
-# paper-easy-plain-german-datasets
+# Linguistic Features of German Easy and Plain Language
+
+TODO
