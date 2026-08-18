@@ -183,9 +183,87 @@ def plot_stacked_bars(avg_scores_by_corpus, output_path):
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
-    plt.show()
+    #plt.show()
 
+def plot_stacked_bars_old(avg_scores_by_corpus, output_path):
+    # Feature order: F7 → F1 → OOV
+    first_corpus_scores = next(iter(avg_scores_by_corpus.values()))
+    feature_order = list(first_corpus_scores.keys())
 
+    corpus_labels = list(avg_scores_by_corpus.keys())
+
+    # Horizontal plot: make figure taller rather than wider
+    fig, ax = plt.subplots(figsize=(7, 5.5))
+
+    colors = sns.color_palette("colorblind", len(feature_order))
+    cumulative = {label: 0.0 for label in corpus_labels}
+
+    for idx, feature in enumerate(feature_order):
+        widths, lefts = [], []
+
+        for label in corpus_labels:
+            avg = avg_scores_by_corpus[label].get(feature, np.nan)
+            width = 0.0 if np.isnan(avg) else float(avg)
+
+            widths.append(width)
+            lefts.append(cumulative[label])
+
+        ax.barh(
+            corpus_labels,
+            widths,
+            left=lefts,
+            label=feature,
+            color=colors[idx % len(colors)],
+            height=0.55,
+        )
+
+        for label, w in zip(corpus_labels, widths):
+            cumulative[label] += w
+
+    ax.set_title("Average Frequency Ratio Features by Corpus")
+
+    # Optional: since ratios sum to roughly 1
+    ax.set_xlim(0, 1)
+
+    # Keep corpus labels readable
+    ax.set_ylabel("")
+    ax.set_xlabel("")
+
+    # Hide x-axis ticks/labels for a cleaner stacked-ratio plot
+    ax.set_xticks([])
+    ax.set_xticklabels([])
+
+    # Put first corpus at the top
+    ax.invert_yaxis()
+
+    feature_map = {
+        "Freq_Ratio_F7_PER_Token": "F7",
+        "Freq_Ratio_F6_PER_Token": "F6",
+        "Freq_Ratio_F5_PER_Token": "F5",
+        "Freq_Ratio_F4_PER_Token": "F4",
+        "Freq_Ratio_F3_PER_Token": "F3",
+        "Freq_Ratio_F2_PER_Token": "F2",
+        "Freq_Ratio_F1_PER_Token": "F1",
+        "Freq_Ratio_OOV_PER_Token": "OOV",
+    }
+
+    handles, labels = ax.get_legend_handles_labels()
+    custom_labels = [feature_map.get(f, f) for f in feature_order]
+
+    fig.legend(
+        handles,
+        custom_labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.98),
+        ncol=4,
+        frameon=False,
+    )
+
+    fig.subplots_adjust(top=0.82, left=0.25)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
+    plt.close(fig)
 
 def _latex_escape(text: str) -> str:
     """Escape a few characters that have special meaning in LaTeX tables.
@@ -306,7 +384,7 @@ def main() -> None:
     }
 
     # Plot stacked bars for all corpora.
-    plot_stacked_bars(avg_by_corpus, output_path=Path("../output") / "freq_stacked_types.png")
+    plot_stacked_bars(avg_by_corpus, output_path=Path("../output") / "freq_stacked_types_horizontal.png")
     
     # Plot grouped bars (features on x‑axis) for all corpora.
     #plot_grouped_bars(avg_by_corpus, output_path=Path("output") / "freq_grouped.png")

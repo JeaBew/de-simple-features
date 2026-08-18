@@ -29,47 +29,55 @@ BAND_ORDER = ["f7", "f6", "f5", "f4", "f3", "f2", "f1", "oov"]
 
 def plot_stacked_bars(avg_scores_by_corpus, output_path):
     first_corpus_scores = next(iter(avg_scores_by_corpus.values()))
-    feature_order = list(first_corpus_scores.keys())
+
+    # Deine feature_names sind aktuell OOV → F7.
+    # Für die horizontale Darstellung drehen wir das um: F7 → OOV.
+    feature_order = list(first_corpus_scores.keys())[::-1]
 
     corpus_labels = list(avg_scores_by_corpus.keys())
 
-    # ↓ Make overall chart less wide (reduce first number)
-    fig, ax = plt.subplots(figsize=(6, 6))  # e.g. (6,6) instead of (8,6)
+    # Horizontal: eher breiter als hoch
+    fig, ax = plt.subplots(figsize=(7, 5.5))
 
     colors = sns.color_palette("colorblind", len(feature_order))
     cumulative = {label: 0.0 for label in corpus_labels}
 
     for idx, feature in enumerate(feature_order):
-        heights, bottoms = [], []
+        widths, lefts = [], []
+
         for label in corpus_labels:
             avg = avg_scores_by_corpus[label].get(feature, np.nan)
-            height = 0.0 if np.isnan(avg) else float(avg)
-            heights.append(height)
-            bottoms.append(cumulative[label])
+            width = 0.0 if np.isnan(avg) else float(avg)
 
-        ax.bar(
+            widths.append(width)
+            lefts.append(cumulative[label])
+
+        ax.barh(
             corpus_labels,
-            heights,
-            bottom=bottoms,
+            widths,
+            left=lefts,
             label=feature,
             color=colors[idx % len(colors)],
-            width=0.35,
+            height=0.55,
         )
 
-        for label, h in zip(corpus_labels, heights):
-            cumulative[label] += h
+        for label, w in zip(corpus_labels, widths):
+            cumulative[label] += w
 
     ax.set_title("Average Frequency Ratio Features by Corpus")
-    # Hide y‑axis ticks and labels for a cleaner appearance.
-    ax.set_yticks([])
-    ax.set_yticklabels([])
-    plt.setp(ax.get_xticklabels(), rotation=90, ha="center")
-    fig.subplots_adjust(bottom=0.35)
-    
-    # ↓ Combine custom legend names with a legend placed outside the axes.
-    # First retrieve the automatically generated handles (the colored patches).
-    handles, _ = ax.get_legend_handles_labels()
-    # Map the original feature names to the desired short names.
+
+    # Bei Ratio-Werten sinnvoll
+    ax.set_xlim(0, 1)
+
+    # Achsen optisch reduzieren
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.set_xticks([])
+    ax.set_xticklabels([])
+
+    # Erstes Korpus oben anzeigen
+    ax.invert_yaxis()
+
     feature_map = {
         "Freq_Ratio_F7_PER_Token": "F7",
         "Freq_Ratio_F6_PER_Token": "F6",
@@ -80,28 +88,25 @@ def plot_stacked_bars(avg_scores_by_corpus, output_path):
         "Freq_Ratio_F1_PER_Token": "F1",
         "Freq_Ratio_OOV_PER_Token": "OOV",
     }
-    custom_labels = [feature_map.get(f, f) for f in feature_order]
-    
-    # ---- Invert the order ----
-    handles = handles[::-1]          # reverse the list of patches
-    custom_labels = custom_labels[::-1]  # reverse the list of label strings
 
-    # Use the figure's legend method so we can position it outside the axes.
+    handles, _ = ax.get_legend_handles_labels()
+    custom_labels = [feature_map.get(f, f) for f in feature_order]
+
     fig.legend(
         handles,
         custom_labels,
         loc="upper center",
-        bbox_to_anchor=(0.5, 0.97),
-        ncol=4,  # display legend entries in three columns
+        bbox_to_anchor=(0.5, 0.98),
+        ncol=4,
         frameon=False,
     )
-        
-    # Reserve room at top for the legend
-    fig.subplots_adjust(top=0.80)  # smaller => more space for legend
+
+    # Platz für Korpuslabels links und Legende oben
+    fig.subplots_adjust(top=0.82, left=0.25)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
-    plt.show()
+    plt.close(fig)
 
 def plot_grouped_bars(avg_scores_by_corpus, output_path):
     """Create a grouped bar chart where *features* are on the x‑axis.
@@ -179,7 +184,7 @@ def plot_grouped_bars(avg_scores_by_corpus, output_path):
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
-    plt.show()
+    #plt.show()
 
 def plot_token_proportions(token_counts_by_corpus: Mapping[str, pd.DataFrame], output_path: Path) -> None:
     """Plot stacked bars of token‑band **proportions** for each corpus.
@@ -248,7 +253,7 @@ def plot_token_proportions(token_counts_by_corpus: Mapping[str, pd.DataFrame], o
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
-    plt.show()
+    #plt.show()
 
 def _latex_escape(text: str) -> str:
     """Escape a few characters that have special meaning in LaTeX tables.

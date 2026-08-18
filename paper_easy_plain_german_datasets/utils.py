@@ -191,7 +191,7 @@ def process_folder(
     # Initialise an aggregated dict with empty lists for each feature.
     aggregated: Dict[str, List[float]] = {name: [] for name in feature_names}
     for file in tqdm(dir.iterdir(), desc=f"Processing {dir.name}"):
-        if not file.is_file():
+        if not file.is_file() or file.suffix != ".txt":
             continue
         # Get per‑file dict of feature → scores.
         file_result = _process_file(
@@ -242,7 +242,7 @@ def process_folder_with_filenames(
 
     result: Dict[Path, Dict[str, List[float]]] = {}
     for file in tqdm(dir.iterdir(), desc=f"Scanning {dir.name}"):
-        if not file.is_file():
+        if not file.is_file() or file.suffix != ".txt":
             continue
         file_result = _process_file(
             file,

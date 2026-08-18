@@ -6,6 +6,8 @@ ASGC_ORIG = Path("data/asgc/orig")
 ASGC_PLAIN = Path("data/asgc/plain")
 ASGC_EASY = Path("data/asgc/easy")
 
+#G4A_ORIG = Path("data/german4all/orig")
+#G4A_EASY = Path("data/german4all/easy")
 G4A_ORIG = Path("data/german4all/orig")
 G4A_EASY = Path("data/german4all/easy")
 

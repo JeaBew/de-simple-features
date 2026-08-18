@@ -79,7 +79,7 @@ def process_folder(
     docs_with_subjunctive = 0
     files = list(dir.iterdir())
     for file in tqdm(files, desc=f"Processing {dir.name}"):
-        if not file.is_file():
+        if not file.is_file() or file.suffix != ".txt":
             continue
 
         text = file.read_text(encoding="utf-8")
@@ -106,47 +106,72 @@ def process_folder(
     return docs_with_subjunctive / file_count if file_count > 0 else float("nan")
 
 def plot_subjunctive_proportions(results: Dict[str, float]) -> None:
-    """Create a horizontal bar chart using pre‑computed *results*.
+    """Create a horizontal bar chart using pre-computed *results*.
 
-    ``results`` should map a corpus identifier (e.g. ``"TIGER_ORIG"``) to the
-    subjunctive proportion that was already calculated in ``main``. This avoids
-    re‑scanning the directories.
+    Bars are ordered by corpus category:
+    first ORIG, then PLAIN, then EASY.
     """
+
     import matplotlib.pyplot as plt
 
-    # Build a DataFrame that also encodes a categorical colour mapping.
-    # Use the explicit sum pattern to preserve the insertion order of the
-    # ``results`` dictionary (matching the style used in other plotting scripts).
     df = pd.DataFrame({
-        "corpus": sum([[name] for name in results.keys()], []),
-        "proportion": sum([[value] for value in results.values()], []),
+        "corpus": list(results.keys()),
+        "proportion": list(results.values()),
     })
 
     df["category"] = df["corpus"].apply(_category)
 
+    # Gewünschte Reihenfolge der Korpus-Kategorien
+    category_order = {
+        "orig": 0,
+        "plain": 1,
+        "easy": 2,
+    }
+
+    # Ursprüngliche Reihenfolge innerhalb einer Kategorie beibehalten
+    df["_original_order"] = range(len(df))
+    df["_category_order"] = df["category"].map(category_order)
+
+    df = df.sort_values(
+        by=["_category_order", "_original_order"],
+        ascending=[True, True],
+    ).reset_index(drop=True)
+
+    # Explizite y-Achsen-Reihenfolge für seaborn
+    corpus_order = df["corpus"].tolist()
+
     sns.set(style="whitegrid")
     plt.figure(figsize=(6, max(2, len(df) * 0.4)))
 
-    palette = {"orig": "tab:blue", "plain": "tab:orange", "easy": "tab:green"}
+    palette = {
+        "orig": "tab:blue",
+        "plain": "tab:orange",
+        "easy": "tab:green",
+    }
+
     sns.barplot(
         x="proportion",
         y="corpus",
         hue="category",
         data=df,
+        order=corpus_order,
+        hue_order=["orig", "plain", "easy"],
         palette=palette,
         dodge=False,
         legend=False,
     )
+
     plt.xlabel("Subjunctive proportion")
+    plt.ylabel("Corpus")
     plt.title("Subjunctive proportion per corpus")
+
     ax = plt.gca()
     plt.setp(ax.get_yticklabels(), rotation=0, ha="right")
 
-    # Adjust margins to match other plots.
     fig = plt.gcf()
     fig.subplots_adjust(left=0.30, right=0.95)
     plt.tight_layout()
-    
+
     output_path = Path("../output") / "subjunctive_proportions.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=300, bbox_inches="tight")

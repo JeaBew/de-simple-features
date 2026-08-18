@@ -198,7 +198,7 @@ def main() -> None:
         """
         entries: list[tuple[int, str, str]] = []
         for file in corpus_path.iterdir():
-            if not file.is_file():
+            if not file.is_file() or file.suffix != ".txt":
                 continue
             text = file.read_text(encoding="utf-8")
             doc = nlp(text)
